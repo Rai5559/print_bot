@@ -1110,11 +1110,6 @@ async def manejar_datos_webapp(update: Update, context: ContextTypes.DEFAULT_TYP
 
     teclado = [
         [InlineKeyboardButton(texto_btn_confirmar, callback_data="print_auto")],
-        [
-            InlineKeyboardButton("📥 Cas. 1", callback_data="print_cas1"),
-            InlineKeyboardButton("📥 Cas. 2", callback_data="print_cas2"),
-            InlineKeyboardButton("📄 Posterior", callback_data="print_rear")
-        ],
         [InlineKeyboardButton("❌ Cancelar", callback_data="cancel_order")]
     ]
 
@@ -1170,16 +1165,7 @@ async def boton_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not orden:
             await query.edit_message_caption(caption="❌ Orden caducada o ya enviada a imprimir.")
             return
-
-        # Si presiona un botón de bandeja específica en Telegram, sobreescribe;
-        # si presiona "print_auto", respeta la bandeja elegida en la WebApp (o None si fue auto)
-        if query.data == "print_cas1":
-            orden['config']['bandeja_manual'] = "Cassette 1"
-        elif query.data == "print_cas2":
-            orden['config']['bandeja_manual'] = "Cassette 2"
-        elif query.data == "print_rear":
-            orden['config']['bandeja_manual'] = "Rear Tray"
-
+        
         bandeja_final = orden['config'].get('bandeja_manual') or "Automática"
         await query.edit_message_caption(
             caption=f"✅ Confirmado (Bandeja: {bandeja_final}). 🚀 Transmitiendo a la tienda..."
