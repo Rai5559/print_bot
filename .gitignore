@@ -1,0 +1,43 @@
+# ========================================================
+# 🔒 CREDENCIALES Y SECRETOS (NUNCA SUBIR A GITHUB)
+# ========================================================
+.env
+*.env
+!.env.example
+*.conf
+
+# ========================================================
+# 🐍 ENTORNOS VIRTUALES Y CACHÉ DE PYTHON
+# ========================================================
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ========================================================
+# 📁 ARCHIVOS DE CLIENTES, TEMPORALES Y PRUEBAS DEL BOT
+# ========================================================
+archivos_impresion/
+temp_uploads/
+temp_test_files/
+PRUEBAS_SISTEMA/
+PRUEBAS_SISTEMA_V2/
+documentos_recibidos/
+
+# ========================================================
+# 📊 BASES DE DATOS LOCALES Y REPORTES FINANCIEROS
+# ========================================================
+registro_impresiones.csv
+*.xlsx
+*.xls
+*.pdf
+
+# ========================================================
+# 💻 SISTEMA OPERATIVO Y EDITORES
+# ========================================================
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
