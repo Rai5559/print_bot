@@ -23,7 +23,10 @@ from docx2pdf import convert as convert_docx
 from playwright.async_api import async_playwright
 import rectpack
 
-from telegram import Update, WebAppInfo, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    Update, WebAppInfo, KeyboardButton, ReplyKeyboardMarkup,
+    InlineKeyboardButton, InlineKeyboardMarkup
+)
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -42,8 +45,11 @@ URL_TIENDA = os.getenv("URL_TIENDA")
 ids_str = os.getenv("USUARIOS_AUTORIZADOS", "")
 USUARIOS_AUTORIZADOS = [int(i.strip()) for i in ids_str.split(",") if i.strip()]
 
-# 🔴 CAMBIA ESTA URL POR LA URL DONDE ALOJES TU WEBAPP.HTML 🔴
 WEBAPP_URL = os.getenv("WEBAPP_URL")
+TECLADO_PANEL = ReplyKeyboardMarkup(
+    [[KeyboardButton("🎛️ ABRIR PANEL DE IMPRESIÓN", web_app=WebAppInfo(url=WEBAPP_URL))]],
+    resize_keyboard=True
+)
 
 # Memoria temporal para agrupar archivos antes de abrir la WebApp
 # Estructura: {chat_id: {"archivos_temporales": [ruta1, ruta2]}}
@@ -912,7 +918,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "2️⃣ Toca **Abrir Panel de Impresión** para elegir acomodo y copias.\n"
         "3️⃣ Revisa el precio, la vista previa y confirma.",
         parse_mode='Markdown',
-        reply_markup=InlineKeyboardMarkup(teclado)
+        reply_markup=TECLADO_PANEL
     )
 
 
@@ -1008,7 +1014,7 @@ async def recibir_archivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📁 **{len(sesiones_activas[chat_id]['archivos_temporales'])} archivo(s) listos.**\n"
         f"Manda más o abre el panel cuando termines:",
         parse_mode='Markdown',
-        reply_markup=InlineKeyboardMarkup(teclado)
+        reply_markup=TECLADO_PANEL
     )
 
 
@@ -1140,7 +1146,7 @@ async def comandos_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         teclado = [[InlineKeyboardButton("🎛️ ABRIR PANEL DE IMPRESIÓN", web_app=WebAppInfo(url=WEBAPP_URL))]]
         await update.message.reply_text(
             "👆 Ya tienes archivos cargados. Toca el botón para configurar e imprimir:",
-            reply_markup=InlineKeyboardMarkup(teclado)
+            reply_markup=TECLADO_PANEL
         )
     else:
         await update.message.reply_text("⚠️ Envía primero las fotos o documentos del cliente.")
