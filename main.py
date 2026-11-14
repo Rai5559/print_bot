@@ -207,10 +207,166 @@ def crear_lienzo(tamano="carta", orientacion="vertical"):
 
 
 def optimizar_orientacion(img, ancho_celda, alto_celda):
-    """Rota la imagen 90 grados automáticamente si aprovecha mejor la celda."""
-    if (ancho_celda / alto_celda > 1) != (img.width / img.height > 1):
+    """Rota la imagen 90° solo si al girarla logra abarcar un área mayor dentro de la celda."""
+    escala_normal = min(ancho_celda / img.width, alto_celda / img.height)
+    escala_rotada = min(ancho_celda / img.height, alto_celda / img.width)
+
+    # Si rotada aprovecha al menos 10% más de tamaño en el recuadro, la giramos
+    if escala_rotada > (escala_normal * 1.10):
         return img.rotate(90, expand=True)
     return img
+
+
+def escalar_a_celda(img, ancho_celda, alto_celda, sin_bordes=False, rotar_auto=True, margen=12):
+    """
+    Aumenta o reduce cualquier imagen para que abarque el máximo espacio posible
+    de su celda asignada sin deformarse (mantiene relación de aspecto exacta).
+    """
+    if rotar_auto:
+        img = optimizar_orientacion(img, ancho_celda, alto_celda)
+
+    w_util = max(1, ancho_celda if sin_bordes else (ancho_celda - margen * 2))
+    h_util = max(1, alto_celda if sin_bordes else (alto_celda - margen * 2))
+
+    if sin_bordes:
+        # Cubre el 100% de la celda recortando únicamente el sobrante centrado
+        return ImageOps.fit(img, (w_util, h_util), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
+
+    # Cálculo explícito de ampliación/reducción proporcional sin deformar
+    factor = min(w_util / img.width, h_util / img.height)
+    nuevo_w = max(1, int(round(img.width * factor)))
+    nuevo_h = max(1, int(round(img.height * factor)))
+
+    return img.resize((nuevo_w, nuevo_h), resample=Image.Resampling.LANCZOS)
+
+
+def pegar_en_caja(hoja, img, x_caja, y_caja, w_caja, h_caja, sin_bordes=False, rotar_auto=True, margen=12):
+    """Escala la imagen al máximo de la caja y la pega perfectamente centrada."""
+    if img is None:
+        return
+    img_escalada = escalar_a_celda(img, w_caja, h_caja, sin_bordes=sin_bordes, rotar_auto=rotar_auto, margen=margen)
+    x_offset = x_caja + (w_caja - img_escalada.width) // 2
+    y_offset = y_caja + (h_caja - img_escalada.height) // 2
+    hoja.paste(img_escalada, (x_offset, y_offset))
+
+
+def obtener_cajas_asimetricas(layout_id, ancho_hoja, alto_hoja, escala=1.0):
+    """Devuelve las coordenadas exactas (x, y, w, h) de cada recuadro para layouts de 3 y 5 fotos."""
+    margen_ext = 40
+    gap = 24
+
+    W = int((ancho_hoja - (margen_ext * 2)) * escala)
+    H = int((alto_hoja - (margen_ext * 2)) * escala)
+    x0 = (ancho_hoja - W) // 2
+    y0 = margen_ext if escala < 1.0 else (alto_hoja - H) // 2
+
+    w_mitad = (W - gap) // 2
+    h_mitad = (H - gap) // 2
+
+    # --- LAYOUTS DE 3 IMÁGENES ---
+    if layout_id in ["layout_asim_3_top", "layout_asim_1_2"]:
+        h_top = int((H - gap) * 0.52)
+        h_bot = (H - gap) - h_top
+        return [
+            (x0, y0, W, h_top),
+            (x0, y0 + h_top + gap, w_mitad, h_bot),
+            (x0 + w_mitad + gap, y0 + h_top + gap, w_mitad, h_bot),
+        ]
+
+    if layout_id == "layout_asim_3_bottom":
+        h_top = int((H - gap) * 0.48)
+        h_bot = (H - gap) - h_top
+        return [
+            (x0, y0, w_mitad, h_top),
+            (x0 + w_mitad + gap, y0, w_mitad, h_top),
+            (x0, y0 + h_top + gap, W, h_bot),
+        ]
+
+    if layout_id == "layout_asim_3_left":
+        w_left = int((W - gap) * 0.52)
+        w_right = (W - gap) - w_left
+        return [
+            (x0, y0, w_left, H),
+            (x0 + w_left + gap, y0, w_right, h_mitad),
+            (x0 + w_left + gap, y0 + h_mitad + gap, w_right, h_mitad),
+        ]
+
+    if layout_id == "layout_asim_3_right":
+        w_left = int((W - gap) * 0.48)
+        w_right = (W - gap) - w_left
+        return [
+            (x0, y0, w_left, h_mitad),
+            (x0, y0 + h_mitad + gap, w_left, h_mitad),
+            (x0 + w_left + gap, y0, w_right, H),
+        ]
+
+    # --- LAYOUTS DE 5 IMÁGENES ---
+    if layout_id == "layout_asim_5_top":
+        h_top = int((H - gap) * 0.44)
+        h_bot = (H - gap) - h_top
+        h_celda = (h_bot - gap) // 2
+        y_grid = y0 + h_top + gap
+        return [
+            (x0, y0, W, h_top),
+            (x0, y_grid, w_mitad, h_celda),
+            (x0 + w_mitad + gap, y_grid, w_mitad, h_celda),
+            (x0, y_grid + h_celda + gap, w_mitad, h_celda),
+            (x0 + w_mitad + gap, y_grid + h_celda + gap, w_mitad, h_celda),
+        ]
+
+    if layout_id == "layout_asim_5_bottom":
+        h_top = int((H - gap) * 0.56)
+        h_bot = (H - gap) - h_top
+        h_celda = (h_top - gap) // 2
+        return [
+            (x0, y0, w_mitad, h_celda),
+            (x0 + w_mitad + gap, y0, w_mitad, h_celda),
+            (x0, y0 + h_celda + gap, w_mitad, h_celda),
+            (x0 + w_mitad + gap, y0 + h_celda + gap, w_mitad, h_celda),
+            (x0, y0 + h_top + gap, W, h_bot),
+        ]
+
+    if layout_id == "layout_asim_5_center":
+        h_disp = H - (gap * 2)
+        h_fila1 = int(h_disp * 0.30)
+        h_centro = int(h_disp * 0.40)
+        h_fila3 = h_disp - h_fila1 - h_centro
+        y_centro = y0 + h_fila1 + gap
+        y_fila3 = y_centro + h_centro + gap
+        return [
+            (x0, y0, w_mitad, h_fila1),
+            (x0 + w_mitad + gap, y0, w_mitad, h_fila1),
+            (x0, y_centro, W, h_centro),
+            (x0, y_fila3, w_mitad, h_fila3),
+            (x0 + w_mitad + gap, y_fila3, w_mitad, h_fila3),
+        ]
+
+    if layout_id == "layout_asim_5_left":
+        w_left = int((W - gap) * 0.46)
+        w_right = (W - gap) - w_left
+        w_celda = (w_right - gap) // 2
+        x_grid = x0 + w_left + gap
+        return [
+            (x0, y0, w_left, H),
+            (x_grid, y0, w_celda, h_mitad),
+            (x_grid + w_celda + gap, y0, w_celda, h_mitad),
+            (x_grid, y0 + h_mitad + gap, w_celda, h_mitad),
+            (x_grid + w_celda + gap, y0 + h_mitad + gap, w_celda, h_mitad),
+        ]
+
+    return [(x0, y0, W, H)]
+
+
+def obtener_slots_personalizados(todas_las_imagenes, mapa_usuario, num_slots):
+    """Devuelve una lista de longitud num_slots con las imágenes elegidas o None si el slot es X (-1)."""
+    resultado = []
+    for slot in range(num_slots):
+        foto_idx = int(mapa_usuario.get(str(slot), -1))
+        if 0 <= foto_idx < len(todas_las_imagenes):
+            resultado.append(todas_las_imagenes[foto_idx])
+        else:
+            resultado.append(None)
+    return resultado
 
 
 def analizar_rango(rango_val, total_paginas):
@@ -414,7 +570,7 @@ def mapear_webapp_a_config(data_webapp, num_archivos):
     }
 
     lid = str(data_webapp.get("layout_id", "layout_1"))
-
+    c["layout_id"] = lid
     # 1. Cuadrículas estándar
     if lid == "layout_1":
         c["layout_n_up"] = 1
@@ -488,13 +644,16 @@ def obtener_slots_personalizados(todas_las_imagenes, mapa_usuario, num_slots):
 async def unificar_y_procesar_a_pdf(lista_archivos, ruta_procesados, config_json):
     ruta_salida = os.path.join(ruta_procesados, "documento_final.pdf")
     layout_n = config_json.get("layout_n_up", 1)
+    layout_id = config_json.get("layout_id", "layout_1")
     tamano_papel = config_json.get("tamano_papel", "carta")
     orientacion = config_json.get("orientacion", "vertical")
     tipo_doc = config_json.get("tipo_documento", "normal").lower()
     escala = config_json.get("escala_porcentaje", 100) / 100.0
     forzar_rotacion = config_json.get("forzar_rotacion", "ninguna")
+    sin_bordes = config_json.get("sin_bordes", False)
     mapa_usuario = config_json.get("mapa_slots", {})
     acomodo_manual = config_json.get("acomodo_manual", False)
+    rotar_auto = (forzar_rotacion == "ninguna")
 
     todas_las_imagenes = []
 
@@ -547,78 +706,244 @@ async def unificar_y_procesar_a_pdf(lista_archivos, ruta_procesados, config_json
         elif modo_escaner:
             todas_las_imagenes[idx] = limpiar_documento_opencv(img)
 
-    # 4. CARRIL HTML ASIMÉTRICO (3 y 5 IMÁGENES)
-    if config_json.get("modo_html", False) and config_json.get("codigo_html"):
-        plantilla_raw = re.sub(
-            r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>',
-            '',
-            config_json.get("codigo_html"),
-            flags=re.IGNORECASE
-        )
-        imgs_por_hoja = max(1, int(config_json.get("imagenes_por_hoja", 3)))
-        formato_pw = "Legal" if tamano_papel.lower() == "oficio" else "Letter"
-        es_horizontal = (orientacion.lower() == "horizontal")
-        size_css = f"{formato_pw.lower()} {'landscape' if es_horizontal else 'portrait'}"
+    # 4. CARRIL LAYOUTS ASIMÉTRICOS (3 y 5 IMÁGENES EN PILLOW A 300 DPI)
+    if config_json.get("modo_html", False) or layout_id.startswith("layout_asim_"):
+        imgs_por_hoja = 3 if "_3_" in layout_id or layout_id == "layout_asim_1_2" else 5
 
-        # Si el usuario personalizó los slots en el lienzo, armamos la hoja exacta que diseñó;
-        # si no, paginamos todas las imágenes en lotes de imgs_por_hoja.
         if acomodo_manual and mapa_usuario:
-            lotes_html = [obtener_slots_personalizados(todas_las_imagenes, mapa_usuario, imgs_por_hoja)]
+            lotes_asim = [obtener_slots_personalizados(todas_las_imagenes, mapa_usuario, imgs_por_hoja)]
         else:
-            lotes_html = []
-            for i in range(0, len(todas_las_imagenes), imgs_por_hoja):
-                lote_slice = todas_las_imagenes[i:i + imgs_por_hoja]
-                while len(lote_slice) < imgs_por_hoja:
-                    lote_slice.append(None)
-                lotes_html.append(lote_slice)
+            lotes_asim = [todas_las_imagenes[i:i + imgs_por_hoja] for i in range(0, len(todas_las_imagenes), imgs_por_hoja)]
 
-        pdf_final_doc = fitz.open()
+        paginas_pdf = []
+        for lote in lotes_asim:
+            hoja = crear_lienzo(tamano_papel, orientacion)
+            cajas = obtener_cajas_asimetricas(layout_id, hoja.width, hoja.height, escala=escala)
+            for idx, (x_c, y_c, w_c, h_c) in enumerate(cajas):
+                img_slot = lote[idx] if idx < len(lote) else None
+                pegar_en_caja(hoja, img_slot, x_c, y_c, w_c, h_c, sin_bordes=sin_bordes, rotar_auto=rotar_auto, margen=8)
+            paginas_pdf.append(hoja)
 
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            page = await browser.new_page()
-            await page.route(
-                "**/*",
-                lambda route: route.continue_() if route.request.url.startswith(("data:", "about:")) else route.abort()
-            )
-
-            for lote_idx, lote_imgs in enumerate(lotes_html):
-                codigo_hoja = plantilla_raw
-                for slot, img_slot in enumerate(lote_imgs):
-                    if img_slot is not None:
-                        buffered = BytesIO()
-                        img_slot.save(buffered, format="PNG")
-                        b64_uri = f"data:image/png;base64,{base64.b64encode(buffered.getvalue()).decode()}"
-                    else:
-                        b64_uri = PIXEL_TRANSPARENTE
-                    codigo_hoja = codigo_hoja.replace(f"{{img_{slot}}}", b64_uri)
-
-                html_final = f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <style>
-                        @page {{ size: {size_css}; margin: 0; }}
-                        body {{ margin: 0; padding: 0; box-sizing: border-box; width: 100vw; height: 100vh; overflow: hidden; }}
-                    </style>
-                </head>
-                <body>{codigo_hoja}</body>
-                </html>
-                """
-                temp_pdf_hoja = os.path.join(ruta_procesados, f"_temp_html_{lote_idx}.pdf")
-                await page.set_content(html_final, timeout=5000, wait_until="domcontentloaded")
-                await page.pdf(path=temp_pdf_hoja, format=formato_pw, landscape=es_horizontal, print_background=True)
-
-                hoja_doc = fitz.open(temp_pdf_hoja)
-                pdf_final_doc.insert_pdf(hoja_doc)
-                hoja_doc.close()
-                os.remove(temp_pdf_hoja)
-
-            await browser.close()
-
-        pdf_final_doc.save(ruta_salida)
-        pdf_final_doc.close()
+        if paginas_pdf:
+            paginas_pdf[0].save(ruta_salida, save_all=True, append_images=paginas_pdf[1:], resolution=300.0)
         return ruta_salida
+
+    # 5. CARRIL TETRIS MATEMÁTICO CON AUTO-AMPLIACIÓN PROPORCIONAL
+    if config_json.get("modo_tetris", False):
+        if acomodo_manual and mapa_usuario:
+            imagenes_tetris = [
+                img for img in obtener_slots_personalizados(todas_las_imagenes, mapa_usuario, len(mapa_usuario))
+                if img is not None
+            ]
+        else:
+            imagenes_tetris = list(todas_las_imagenes)
+
+        if not imagenes_tetris:
+            crear_lienzo(tamano_papel, orientacion).save(ruta_salida, resolution=300.0)
+            return ruta_salida
+
+        espaciado = 20
+        margen_seguro = 50
+        hoja_prueba = crear_lienzo(tamano_papel, orientacion)
+        ancho_util = hoja_prueba.width - (margen_seguro * 2)
+        alto_util = hoja_prueba.height - (margen_seguro * 2)
+
+        # Paso A: Si alguna imagen excede el tamaño de la hoja, reducirla para que nunca se descarte
+        imgs_normalizadas = []
+        for img in imagenes_tetris:
+            f_max = min((ancho_util - espaciado) / img.width, (alto_util - espaciado) / img.height)
+            if f_max < 1.0:
+                img = img.resize((max(1, int(img.width * f_max)), max(1, int(img.height * f_max))), Image.Resampling.LANCZOS)
+            imgs_normalizadas.append(img)
+
+        # Paso B: Si las imágenes son pequeñas, buscar el factor máximo de ampliación que quepa en 1 hoja
+        def empaquetar_con_factor(factor_prueba):
+            p = rectpack.newPacker(rotation=True)
+            for idx, im in enumerate(imgs_normalizadas):
+                w_p = max(1, int(im.width * factor_prueba)) + espaciado
+                h_p = max(1, int(im.height * factor_prueba)) + espaciado
+                if min(w_p, h_p) > min(ancho_util, alto_util) or max(w_p, h_p) > max(ancho_util, alto_util):
+                    return None
+                p.add_rect(w_p, h_p, rid=idx)
+            for _ in range(len(imgs_normalizadas)):
+                p.add_bin(ancho_util, alto_util)
+            p.pack()
+            return p
+
+        packer_base = empaquetar_con_factor(1.0)
+        factor_optimo = 1.0
+        if packer_base and len(packer_base) == 1:
+            low, high = 1.0, 6.0
+            for _ in range(10):
+                mid = (low + high) / 2
+                p_test = empaquetar_con_factor(mid)
+                if p_test and len(p_test) == 1 and len(p_test[0]) == len(imgs_normalizadas):
+                    factor_optimo = mid
+                    low = mid
+                else:
+                    high = mid
+
+        packer = empaquetar_con_factor(factor_optimo) or packer_base
+
+        paginas_pdf = []
+        for bin_pack in packer:
+            hoja = crear_lienzo(tamano_papel, orientacion)
+            for rect in bin_pack:
+                w_caja = rect.width - espaciado
+                h_caja = rect.height - espaciado
+                img_orig = imgs_normalizadas[rect.rid]
+                pegar_en_caja(
+                    hoja, img_orig,
+                    margen_seguro + rect.x, margen_seguro + rect.y,
+                    w_caja, h_caja,
+                    sin_bordes=sin_bordes, rotar_auto=True, margen=0
+                )
+            paginas_pdf.append(hoja)
+
+        if paginas_pdf:
+            paginas_pdf[0].save(ruta_salida, save_all=True, append_images=paginas_pdf[1:], resolution=300.0)
+        return ruta_salida
+
+    # 6. CARRIL COPIA DE INE / CREDENCIALES
+    if tipo_doc == "ine":
+        ancho_ine = int(1015 * escala)
+        alto_ine = int(638 * escala)
+
+        if acomodo_manual and mapa_usuario:
+            lotes_ine = [obtener_slots_personalizados(todas_las_imagenes, mapa_usuario, 2)]
+        else:
+            lotes_ine = [todas_las_imagenes[i:i + 2] for i in range(0, len(todas_las_imagenes), 2)]
+
+        paginas_pdf = []
+        for lote in lotes_ine:
+            hoja = crear_lienzo(tamano_papel, orientacion)
+            for idx, img in enumerate(lote):
+                if img is None:
+                    continue
+                x_caja = (hoja.width - ancho_ine) // 2
+                y_caja = (hoja.height // 2) * idx + ((hoja.height // 2) - alto_ine) // 2
+                pegar_en_caja(hoja, img, x_caja, y_caja, ancho_ine, alto_ine, sin_bordes=sin_bordes, rotar_auto=True, margen=0)
+            paginas_pdf.append(hoja)
+
+        if paginas_pdf:
+            paginas_pdf[0].save(ruta_salida, save_all=True, append_images=paginas_pdf[1:], resolution=300.0)
+        return ruta_salida
+
+    # 7. CARRIL PLANILLAS INFANTILES / PASAPORTE / EXACTAS
+    if config_json.get("modo_planilla", False) or config_json.get("dimensiones_cm"):
+        DPI_CM = 118.11
+        dims = config_json.get("dimensiones_cm")
+        if dims and isinstance(dims, list) and len(dims) == 2:
+            ancho_px = int(dims[0] * DPI_CM)
+            alto_px = int(dims[1] * DPI_CM)
+        else:
+            ancho_px = int(10 * DPI_CM)
+            alto_px = int(15 * DPI_CM)
+
+        espaciado = 20
+        margen = 100
+        hoja_actual = crear_lienzo(tamano_papel, orientacion)
+        cols = max(1, (hoja_actual.width - (margen * 2)) // (ancho_px + espaciado))
+        filas = max(1, (hoja_actual.height - (margen * 2)) // (alto_px + espaciado))
+        capacidad_hoja = cols * filas
+
+        repeticiones = config_json.get("repeticiones", 0)
+        lista_imprimir = []
+
+        if repeticiones == 0:
+            if acomodo_manual and mapa_usuario:
+                fotos_base = [
+                    img for img in obtener_slots_personalizados(todas_las_imagenes, mapa_usuario, len(mapa_usuario))
+                    if img is not None
+                ]
+            else:
+                fotos_base = todas_las_imagenes
+            if not fotos_base:
+                fotos_base = todas_las_imagenes
+
+            rep_por_img = max(1, capacidad_hoja // len(fotos_base))
+            for img in fotos_base:
+                img_rec = escalar_a_celda(img, ancho_px, alto_px, sin_bordes=sin_bordes, rotar_auto=rotar_auto, margen=0)
+                lista_imprimir.extend([img_rec] * rep_por_img)
+        else:
+            if acomodo_manual and mapa_usuario:
+                slots_planilla = obtener_slots_personalizados(todas_las_imagenes, mapa_usuario, len(mapa_usuario))
+                for img in slots_planilla:
+                    if img is not None:
+                        lista_imprimir.append(escalar_a_celda(img, ancho_px, alto_px, sin_bordes=sin_bordes, rotar_auto=rotar_auto, margen=0))
+                    else:
+                        lista_imprimir.append(None)
+            else:
+                for img in todas_las_imagenes:
+                    img_rec = escalar_a_celda(img, ancho_px, alto_px, sin_bordes=sin_bordes, rotar_auto=rotar_auto, margen=0)
+                    lista_imprimir.extend([img_rec] * repeticiones)
+
+        paginas_pdf = []
+        dibujadas = 0
+        for i, img in enumerate(lista_imprimir):
+            if img is not None:
+                x_caja = margen + ((dibujadas % cols) * (ancho_px + espaciado))
+                y_caja = margen + ((dibujadas // cols) * (alto_px + espaciado))
+                x_offset = x_caja + (ancho_px - img.width) // 2
+                y_offset = y_caja + (alto_px - img.height) // 2
+                hoja_actual.paste(img, (x_offset, y_offset))
+            dibujadas += 1
+
+            if dibujadas >= capacidad_hoja or i == len(lista_imprimir) - 1:
+                paginas_pdf.append(hoja_actual)
+                if i != len(lista_imprimir) - 1:
+                    hoja_actual = crear_lienzo(tamano_papel, orientacion)
+                    dibujadas = 0
+
+        if paginas_pdf:
+            paginas_pdf[0].save(ruta_salida, save_all=True, append_images=paginas_pdf[1:], resolution=300.0)
+        return ruta_salida
+
+    # 8. CARRIL CUADRÍCULA ESTÁNDAR (1, 2, 4, 6, 8, TODO EN 1)
+    if config_json.get("columnas_forzadas") and config_json.get("filas_forzadas"):
+        columnas = config_json["columnas_forzadas"]
+        filas = config_json["filas_forzadas"]
+    else:
+        img_ejemplo = todas_las_imagenes[0]
+        es_img_horizontal = img_ejemplo.width > img_ejemplo.height
+        columnas, filas = 1, 1
+        if layout_n == 2:
+            columnas, filas = (1, 2) if (orientacion == "vertical") == es_img_horizontal else (2, 1)
+        elif layout_n > 2:
+            columnas = 2
+            filas = math.ceil(layout_n / 2)
+
+    if acomodo_manual and mapa_usuario:
+        num_slots_grid = max(layout_n, len(mapa_usuario))
+        lotes_grid = [obtener_slots_personalizados(todas_las_imagenes, mapa_usuario, num_slots_grid)]
+    else:
+        lotes_grid = [todas_las_imagenes[i:i + layout_n] for i in range(0, len(todas_las_imagenes), layout_n)]
+
+    paginas_pdf = []
+    for lote in lotes_grid:
+        hoja = crear_lienzo(tamano_papel, orientacion)
+        w_celda = int((hoja.width // columnas) * escala)
+        h_celda = int((hoja.height // filas) * escala)
+
+        y_start = 150 if escala < 1.0 else 0
+        x_start = (hoja.width - (w_celda * columnas)) // 2 if escala < 1.0 else 0
+        margen_celda = 15 if escala >= 1.0 else 4
+
+        for idx, img in enumerate(lote):
+            if img is None:
+                continue
+            x_base = x_start + ((idx % columnas) * w_celda)
+            y_base = y_start + ((idx // columnas) * h_celda)
+            pegar_en_caja(
+                hoja, img,
+                x_base, y_base, w_celda, h_celda,
+                sin_bordes=sin_bordes, rotar_auto=rotar_auto, margen=margen_celda
+            )
+        paginas_pdf.append(hoja)
+
+    if paginas_pdf:
+        paginas_pdf[0].save(ruta_salida, save_all=True, append_images=paginas_pdf[1:], resolution=300.0)
+    return ruta_salida
 
     # 5. CARRIL TETRIS MATEMÁTICO (BIN PACKING)
     if config_json.get("modo_tetris", False):
