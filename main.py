@@ -381,7 +381,12 @@ def normalizar_bandeja(valor_bandeja):
 
 def mapear_webapp_a_config(data_webapp, num_archivos):
     """Traduce el JSON enviado por la WebApp a la configuración completa del motor."""
+    mapa_slots = data_webapp.get("mapa_slots", {})
+    acomodo_manual = bool(data_webapp.get("acomodo_manual", False))
+
     c = {
+        "mapa_slots": mapa_slots,
+        "acomodo_manual": acomodo_manual,
         "copias": max(1, int(data_webapp.get("copias", 1))),
         "color": bool(data_webapp.get("color", False)),
         "tamano_papel": str(data_webapp.get("tamano_papel", "carta")).lower(),
@@ -457,13 +462,25 @@ def mapear_webapp_a_config(data_webapp, num_archivos):
         c["codigo_html"] = plantilla["html"]
         c["imagenes_por_hoja"] = plantilla["imagenes_por_hoja"]
 
-    # 4. Todo en 1 hoja automático
+    # 4. Todo en 1 hoja automático o con lienzo interactivo
     if data_webapp.get("modo_todo_en_uno"):
-        c["layout_n_up"] = max(1, num_archivos)
+        c["layout_n_up"] = len(mapa_slots) if (acomodo_manual and mapa_slots) else max(1, num_archivos)
         c["columnas_forzadas"] = None
         c["filas_forzadas"] = None
 
     return c
+
+
+def obtener_slots_personalizados(todas_las_imagenes, mapa_usuario, num_slots):
+    """Devuelve una lista de longitud num_slots con las imágenes elegidas o None si el slot es X (-1)."""
+    resultado = []
+    for slot in range(num_slots):
+        foto_idx = int(mapa_usuario.get(str(slot), -1))
+        if 0 <= foto_idx < len(todas_las_imagenes):
+            resultado.append(todas_las_imagenes[foto_idx])
+        else:
+            resultado.append(None)
+    return resultado
 
 
 # ================= MOTOR DE GENERACIÓN PDF =================
@@ -476,6 +493,8 @@ async def unificar_y_procesar_a_pdf(lista_archivos, ruta_procesados, config_json
     tipo_doc = config_json.get("tipo_documento", "normal").lower()
     escala = config_json.get("escala_porcentaje", 100) / 100.0
     forzar_rotacion = config_json.get("forzar_rotacion", "ninguna")
+    mapa_usuario = config_json.get("mapa_slots", {})
+    acomodo_manual = config_json.get("acomodo_manual", False)
 
     todas_las_imagenes = []
 
@@ -528,7 +547,7 @@ async def unificar_y_procesar_a_pdf(lista_archivos, ruta_procesados, config_json
         elif modo_escaner:
             todas_las_imagenes[idx] = limpiar_documento_opencv(img)
 
-    # 4. CARRIL HTML ASIMÉTRICO (PLAYWRIGHT BLINDADO CON SOPORTE MULTI-HOJA)
+    # 4. CARRIL HTML ASIMÉTRICO (3 y 5 IMÁGENES)
     if config_json.get("modo_html", False) and config_json.get("codigo_html"):
         plantilla_raw = re.sub(
             r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>',
@@ -541,6 +560,18 @@ async def unificar_y_procesar_a_pdf(lista_archivos, ruta_procesados, config_json
         es_horizontal = (orientacion.lower() == "horizontal")
         size_css = f"{formato_pw.lower()} {'landscape' if es_horizontal else 'portrait'}"
 
+        # Si el usuario personalizó los slots en el lienzo, armamos la hoja exacta que diseñó;
+        # si no, paginamos todas las imágenes en lotes de imgs_por_hoja.
+        if acomodo_manual and mapa_usuario:
+            lotes_html = [obtener_slots_personalizados(todas_las_imagenes, mapa_usuario, imgs_por_hoja)]
+        else:
+            lotes_html = []
+            for i in range(0, len(todas_las_imagenes), imgs_por_hoja):
+                lote_slice = todas_las_imagenes[i:i + imgs_por_hoja]
+                while len(lote_slice) < imgs_por_hoja:
+                    lote_slice.append(None)
+                lotes_html.append(lote_slice)
+
         pdf_final_doc = fitz.open()
 
         async with async_playwright() as p:
@@ -551,14 +582,12 @@ async def unificar_y_procesar_a_pdf(lista_archivos, ruta_procesados, config_json
                 lambda route: route.continue_() if route.request.url.startswith(("data:", "about:")) else route.abort()
             )
 
-            for lote_idx in range(0, len(todas_las_imagenes), imgs_por_hoja):
-                lote = todas_las_imagenes[lote_idx:lote_idx + imgs_por_hoja]
+            for lote_idx, lote_imgs in enumerate(lotes_html):
                 codigo_hoja = plantilla_raw
-
-                for slot in range(imgs_por_hoja):
-                    if slot < len(lote):
+                for slot, img_slot in enumerate(lote_imgs):
+                    if img_slot is not None:
                         buffered = BytesIO()
-                        lote[slot].save(buffered, format="PNG")
+                        img_slot.save(buffered, format="PNG")
                         b64_uri = f"data:image/png;base64,{base64.b64encode(buffered.getvalue()).decode()}"
                     else:
                         b64_uri = PIXEL_TRANSPARENTE
@@ -593,14 +622,26 @@ async def unificar_y_procesar_a_pdf(lista_archivos, ruta_procesados, config_json
 
     # 5. CARRIL TETRIS MATEMÁTICO (BIN PACKING)
     if config_json.get("modo_tetris", False):
+        if acomodo_manual and mapa_usuario:
+            imagenes_tetris = [
+                img for img in obtener_slots_personalizados(todas_las_imagenes, mapa_usuario, len(mapa_usuario))
+                if img is not None
+            ]
+        else:
+            imagenes_tetris = todas_las_imagenes
+
+        if not imagenes_tetris:
+            crear_lienzo(tamano_papel, orientacion).save(ruta_salida, resolution=300.0)
+            return ruta_salida
+
         espaciado = 20
         margen_seguro = 50
         hoja_prueba = crear_lienzo(tamano_papel, orientacion)
         packer = rectpack.newPacker(rotation=True)
 
-        for idx, img in enumerate(todas_las_imagenes):
+        for idx, img in enumerate(imagenes_tetris):
             packer.add_rect(img.width + espaciado, img.height + espaciado, rid=idx)
-        for _ in range(len(todas_las_imagenes)):
+        for _ in range(len(imagenes_tetris)):
             packer.add_bin(hoja_prueba.width - (margen_seguro * 2), hoja_prueba.height - (margen_seguro * 2))
         packer.pack()
 
@@ -608,7 +649,7 @@ async def unificar_y_procesar_a_pdf(lista_archivos, ruta_procesados, config_json
         for bin_pack in packer:
             hoja = crear_lienzo(tamano_papel, orientacion)
             for rect in bin_pack:
-                img = todas_las_imagenes[rect.rid]
+                img = imagenes_tetris[rect.rid]
                 if rect.width != (img.width + espaciado):
                     img = img.rotate(90, expand=True)
                 hoja.paste(img, (margen_seguro + rect.x, margen_seguro + rect.y))
@@ -618,20 +659,33 @@ async def unificar_y_procesar_a_pdf(lista_archivos, ruta_procesados, config_json
             paginas_pdf[0].save(ruta_salida, save_all=True, append_images=paginas_pdf[1:], resolution=300.0)
         return ruta_salida
 
-    # 6. CARRIL COPIA DE INE / CREDENCIALES
-    if tipo_doc == "ine" and len(todas_las_imagenes) <= 2:
-        hoja = crear_lienzo(tamano_papel, orientacion)
+    # 6. CARRIL COPIA DE INE / CREDENCIALES (SOPORTA POSICIÓN SUPERIOR/INFERIOR Y HUECOS VACÍOS)
+    if tipo_doc == "ine":
         ancho_ine = int(1015 * escala)
         alto_ine = int(638 * escala)
-        for idx, img in enumerate(todas_las_imagenes):
-            if img.height > img.width:
-                img = img.rotate(90, expand=True)
-            img_opt = ImageOps.pad(img, (ancho_ine, alto_ine), method=Image.Resampling.LANCZOS, color="white")
-            x_offset = (hoja.width - img_opt.width) // 2
-            y_base = (hoja.height // 2) * idx
-            y_offset = y_base + ((hoja.height // 2) - img_opt.height) // 2
-            hoja.paste(img_opt, (x_offset, y_offset))
-        hoja.save(ruta_salida, resolution=300.0)
+
+        if acomodo_manual and mapa_usuario:
+            lotes_ine = [obtener_slots_personalizados(todas_las_imagenes, mapa_usuario, 2)]
+        else:
+            lotes_ine = [todas_las_imagenes[i:i + 2] for i in range(0, len(todas_las_imagenes), 2)]
+
+        paginas_pdf = []
+        for lote in lotes_ine:
+            hoja = crear_lienzo(tamano_papel, orientacion)
+            for idx, img in enumerate(lote):
+                if img is None:
+                    continue
+                if img.height > img.width:
+                    img = img.rotate(90, expand=True)
+                img_opt = ImageOps.pad(img, (ancho_ine, alto_ine), method=Image.Resampling.LANCZOS, color="white")
+                x_offset = (hoja.width - img_opt.width) // 2
+                y_base = (hoja.height // 2) * idx
+                y_offset = y_base + ((hoja.height // 2) - img_opt.height) // 2
+                hoja.paste(img_opt, (x_offset, y_offset))
+            paginas_pdf.append(hoja)
+
+        if paginas_pdf:
+            paginas_pdf[0].save(ruta_salida, save_all=True, append_images=paginas_pdf[1:], resolution=300.0)
         return ruta_salida
 
     # 7. CARRIL PLANILLAS INFANTILES / PASAPORTE / EXACTAS
@@ -652,23 +706,47 @@ async def unificar_y_procesar_a_pdf(lista_archivos, ruta_procesados, config_json
         filas = max(1, (hoja_actual.height - (margen * 2)) // (alto_px + espaciado))
         capacidad_hoja = cols * filas
 
-        lista_imprimir = []
         repeticiones = config_json.get("repeticiones", 0)
-        if repeticiones == 0:
-            rep_por_img = max(1, capacidad_hoja // len(todas_las_imagenes))
-        else:
-            rep_por_img = repeticiones
+        lista_imprimir = []
 
-        for img in todas_las_imagenes:
-            img_rec = ImageOps.pad(img, (ancho_px, alto_px), method=Image.Resampling.LANCZOS, color="white")
-            lista_imprimir.extend([img_rec] * rep_por_img)
+        if repeticiones == 0:
+            # Modo llenar hoja: usa las fotos activas en el lienzo
+            if acomodo_manual and mapa_usuario:
+                fotos_base = [
+                    img for img in obtener_slots_personalizados(todas_las_imagenes, mapa_usuario, len(mapa_usuario))
+                    if img is not None
+                ]
+            else:
+                fotos_base = todas_las_imagenes
+
+            if not fotos_base:
+                fotos_base = todas_las_imagenes
+
+            rep_por_img = max(1, capacidad_hoja // len(fotos_base))
+            for img in fotos_base:
+                img_rec = ImageOps.pad(img, (ancho_px, alto_px), method=Image.Resampling.LANCZOS, color="white")
+                lista_imprimir.extend([img_rec] * rep_por_img)
+        else:
+            # Repeticiones fijas: si modificó el lienzo, respeta cada casilla (incluso huecos vacíos X)
+            if acomodo_manual and mapa_usuario:
+                slots_planilla = obtener_slots_personalizados(todas_las_imagenes, mapa_usuario, len(mapa_usuario))
+                for img in slots_planilla:
+                    if img is not None:
+                        lista_imprimir.append(ImageOps.pad(img, (ancho_px, alto_px), method=Image.Resampling.LANCZOS, color="white"))
+                    else:
+                        lista_imprimir.append(None)
+            else:
+                for img in todas_las_imagenes:
+                    img_rec = ImageOps.pad(img, (ancho_px, alto_px), method=Image.Resampling.LANCZOS, color="white")
+                    lista_imprimir.extend([img_rec] * repeticiones)
 
         paginas_pdf = []
         dibujadas = 0
         for i, img in enumerate(lista_imprimir):
-            x_pos = margen + ((dibujadas % cols) * (ancho_px + espaciado))
-            y_pos = margen + ((dibujadas // cols) * (alto_px + espaciado))
-            hoja_actual.paste(img, (x_pos, y_pos))
+            if img is not None:
+                x_pos = margen + ((dibujadas % cols) * (ancho_px + espaciado))
+                y_pos = margen + ((dibujadas // cols) * (alto_px + espaciado))
+                hoja_actual.paste(img, (x_pos, y_pos))
             dibujadas += 1
 
             if dibujadas >= capacidad_hoja or i == len(lista_imprimir) - 1:
@@ -681,7 +759,7 @@ async def unificar_y_procesar_a_pdf(lista_archivos, ruta_procesados, config_json
             paginas_pdf[0].save(ruta_salida, save_all=True, append_images=paginas_pdf[1:], resolution=300.0)
         return ruta_salida
 
-    # 8. CARRIL CUADRÍCULA ESTÁNDAR + SIN BORDES + ESCALA
+    # 8. CARRIL CUADRÍCULA ESTÁNDAR (1, 2, 4, 6, 8, TODO EN 1) CON SOPORTE DE LIENZO INTERACTIVO
     if config_json.get("columnas_forzadas") and config_json.get("filas_forzadas"):
         columnas = config_json["columnas_forzadas"]
         filas = config_json["filas_forzadas"]
@@ -695,11 +773,17 @@ async def unificar_y_procesar_a_pdf(lista_archivos, ruta_procesados, config_json
             columnas = 2
             filas = math.ceil(layout_n / 2)
 
+    # Si el usuario personalizó el lienzo, armamos la hoja exacta con sus posiciones y huecos (None)
+    if acomodo_manual and mapa_usuario:
+        num_slots_grid = max(layout_n, len(mapa_usuario))
+        lotes_grid = [obtener_slots_personalizados(todas_las_imagenes, mapa_usuario, num_slots_grid)]
+    else:
+        lotes_grid = [todas_las_imagenes[i:i + layout_n] for i in range(0, len(todas_las_imagenes), layout_n)]
+
     paginas_pdf = []
     sin_bordes = config_json.get("sin_bordes", False)
 
-    for i in range(0, len(todas_las_imagenes), layout_n):
-        lote = todas_las_imagenes[i:i + layout_n]
+    for lote in lotes_grid:
         hoja = crear_lienzo(tamano_papel, orientacion)
         w_celda = int((hoja.width // columnas) * escala)
         h_celda = int((hoja.height // filas) * escala)
@@ -708,6 +792,8 @@ async def unificar_y_procesar_a_pdf(lista_archivos, ruta_procesados, config_json
         x_start = (hoja.width - (w_celda * columnas)) // 2 if escala < 1.0 else 0
 
         for idx, img in enumerate(lote):
+            if img is None:
+                continue  # Deja esta celda completamente en blanco y conserva las coordenadas del resto
             img_opt = optimizar_orientacion(img, w_celda, h_celda)
             if sin_bordes:
                 img_opt = ImageOps.fit(

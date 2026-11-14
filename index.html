@@ -43,12 +43,12 @@
         .wire-box {
             background-color: #93c5fd;
             border: 1px solid #3b82f6;
-            border-radius: 1px;
+            border-radius: 2px;
         }
         .wire-box-alt {
             background-color: #60a5fa;
             border: 1px solid #2563eb;
-            border-radius: 1px;
+            border-radius: 2px;
         }
         .input-clean {
             background-color: #ffffff;
@@ -222,7 +222,7 @@
             </div>
         </div>
 
-        <!-- PANEL CONTEXTUAL PARA PLANILLAS (SOLO SE MUESTRA AL ELEGIR INFANTIL / PASAPORTE / MEDIDA CM) -->
+        <!-- PANEL CONTEXTUAL PARA PLANILLAS -->
         <div id="panel-planilla" class="hidden card rounded-xl p-3 mb-4 border-l-4 border-l-blue-500 space-y-3">
             <div id="inputs-custom-cm" class="hidden grid grid-cols-2 gap-2">
                 <div>
@@ -251,7 +251,6 @@
         <!-- 2B. COMBINACIONES DISPAREJAS PARA 3 IMÁGENES -->
         <p class="text-[11px] font-semibold opacity-60 mb-1.5">Combinaciones para 3 Imágenes</p>
         <div class="grid grid-cols-4 gap-2 mb-3">
-            <!-- 3 Top (1 arriba + 2 abajo) -->
             <div onclick="selectLayout('layout_asim_3_top')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_asim_3_top">
                 <div class="w-7 h-9 wire-sheet flex flex-col gap-0.5">
                     <div class="w-full h-1/2 wire-box-alt"></div>
@@ -263,7 +262,6 @@
                 <span class="text-[10px] mt-1 font-bold text-center">1 Arr + 2</span>
             </div>
 
-            <!-- 3 Bottom (2 arriba + 1 abajo) -->
             <div onclick="selectLayout('layout_asim_3_bottom')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_asim_3_bottom">
                 <div class="w-7 h-9 wire-sheet flex flex-col gap-0.5">
                     <div class="w-full h-1/2 flex gap-0.5">
@@ -275,7 +273,6 @@
                 <span class="text-[10px] mt-1 font-bold text-center">2 + 1 Abj</span>
             </div>
 
-            <!-- 3 Left (1 izq + 2 der) -->
             <div onclick="selectLayout('layout_asim_3_left')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_asim_3_left">
                 <div class="w-7 h-9 wire-sheet flex gap-0.5">
                     <div class="w-1/2 h-full wire-box-alt"></div>
@@ -287,7 +284,6 @@
                 <span class="text-[10px] mt-1 font-bold text-center">1 Izq + 2</span>
             </div>
 
-            <!-- 3 Right (2 izq + 1 der) -->
             <div onclick="selectLayout('layout_asim_3_right')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_asim_3_right">
                 <div class="w-7 h-9 wire-sheet flex gap-0.5">
                     <div class="w-1/2 h-full flex flex-col gap-0.5">
@@ -302,8 +298,7 @@
 
         <!-- 2C. COMBINACIONES DISPAREJAS PARA 5 IMÁGENES -->
         <p class="text-[11px] font-semibold opacity-60 mb-1.5">Combinaciones para 5 Imágenes</p>
-        <div class="grid grid-cols-4 gap-2 mb-5">
-            <!-- 5 Top (1 grande arriba + 4 abajo) -->
+        <div class="grid grid-cols-4 gap-2 mb-4">
             <div onclick="selectLayout('layout_asim_5_top')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_asim_5_top">
                 <div class="w-7 h-9 wire-sheet flex flex-col gap-0.5">
                     <div class="w-full h-[44%] wire-box-alt"></div>
@@ -315,7 +310,6 @@
                 <span class="text-[10px] mt-1 font-bold text-center">1 Arr + 4</span>
             </div>
 
-            <!-- 5 Bottom (4 arriba + 1 grande abajo) -->
             <div onclick="selectLayout('layout_asim_5_bottom')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_asim_5_bottom">
                 <div class="w-7 h-9 wire-sheet flex flex-col gap-0.5">
                     <div class="w-full h-[56%] grid grid-cols-2 grid-rows-2 gap-[1px]">
@@ -327,7 +321,6 @@
                 <span class="text-[10px] mt-1 font-bold text-center">4 + 1 Abj</span>
             </div>
 
-            <!-- 5 Center (2 arriba + 1 centro + 2 abajo) -->
             <div onclick="selectLayout('layout_asim_5_center')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_asim_5_center">
                 <div class="w-7 h-9 wire-sheet flex flex-col gap-[1px]">
                     <div class="w-full h-[28%] flex gap-[1px]">
@@ -343,7 +336,6 @@
                 <span class="text-[10px] mt-1 font-bold text-center">2-1-2 Cen</span>
             </div>
 
-            <!-- 5 Left (1 grande izq + 4 der) -->
             <div onclick="selectLayout('layout_asim_5_left')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_asim_5_left">
                 <div class="w-7 h-9 wire-sheet flex gap-0.5">
                     <div class="w-[46%] h-full wire-box-alt"></div>
@@ -353,6 +345,44 @@
                     </div>
                 </div>
                 <span class="text-[10px] mt-1 font-bold text-center">1 Izq + 4</span>
+            </div>
+        </div>
+
+        <!-- PANEL DE LIENZO INTERACTIVO UNIVERSAL (PARA TODOS LOS LAYOUTS) -->
+        <div id="panel-lienzo" class="card rounded-xl p-3.5 mb-5 border-l-4 border-l-purple-500 shadow-sm">
+            <div class="flex justify-between items-start gap-2 mb-2.5">
+                <div>
+                    <div class="flex items-center gap-1.5">
+                        <h3 class="text-sm font-extrabold text-purple-700"><i class="fa-solid fa-hand-pointer mr-1"></i>Acomodo Interactivo</h3>
+                        <span id="badge-modo-lienzo" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Automático</span>
+                    </div>
+                    <p id="subtitulo-lienzo" class="text-[11px] opacity-75 leading-tight mt-0.5">
+                        Toca cada espacio para elegir qué foto va ahí o dejarlo vacío (<span class="font-bold text-red-500">X</span>).
+                    </p>
+                </div>
+                <div class="text-right shrink-0">
+                    <span class="text-[10px] font-bold block opacity-75">Fotos enviadas:</span>
+                    <div class="flex items-center justify-end gap-1.5 mt-1">
+                        <button onclick="cambiarTotalFotos(-1)" class="w-7 h-7 rounded-lg bg-gray-200 text-gray-800 font-bold active:scale-90">-</button>
+                        <span id="txt-total-fotos" class="text-base font-extrabold w-5 text-center">1</span>
+                        <button onclick="cambiarTotalFotos(1)" class="w-7 h-7 rounded-lg bg-gray-200 text-gray-800 font-bold active:scale-90">+</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botones rápidos de lienzo -->
+            <div class="flex gap-2 mb-2.5">
+                <button onclick="ordenSecuencialLienzo()" class="flex-1 py-1.5 px-2 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 active:scale-95 transition-transform">
+                    <i class="fa-solid fa-arrow-Down-1-9 mr-1"></i> Secuencial (1, 2, 3...)
+                </button>
+                <button onclick="vaciarTodosSlots()" class="flex-1 py-1.5 px-2 rounded-lg text-xs font-bold bg-red-50 text-red-600 border border-red-200 active:scale-95 transition-transform">
+                    <i class="fa-solid fa-xmark mr-1"></i> Vaciar todos (X)
+                </button>
+            </div>
+
+            <!-- Contenedor donde se dibuja la hoja interactiva -->
+            <div id="lienzo-container" class="flex justify-center items-center bg-gray-100 rounded-xl p-3 border border-gray-300 shadow-inner">
+                <!-- Se inyecta dinámicamente según el layout -->
             </div>
         </div>
 
@@ -582,6 +612,364 @@
         let config = estadoInicial();
         let presetActivo = null;
 
+        // ================= VARIABLES DEL LIENZO INTERACTIVO UNIVERSAL =================
+        let totalFotosDisponibles = 1;
+        let mapaSlots = {}; // {0: 0, 1: 1, 2: -1} (-1 = espacio vacío X)
+        let acomodoManual = false; // true cuando el usuario personaliza las casillas
+        let etiquetasEspecialesSlots = {}; // Ej: {0: "FRENTE", 1: "REVERSO"} para INE
+
+        function obtenerNumSlotsBase() {
+            if (config.modo_ine) return 2;
+            if (config.modo_todo_en_uno || config.modo_tetris) return Math.max(1, totalFotosDisponibles);
+
+            const lid = config.layout_id;
+            if (lid === 'layout_1') return 1;
+            if (lid === 'layout_2_horiz' || lid === 'layout_2_vert') return 2;
+            if (lid === 'layout_4') return 4;
+            if (lid === 'layout_6') return 6;
+            if (lid === 'layout_8') return 8;
+            if (lid.includes('_3_')) return 3;
+            if (lid.includes('_5_')) return 5;
+            if (['planilla_infantil', 'planilla_pasaporte', 'planilla_custom'].includes(lid)) {
+                return config.repeticiones > 0 ? Math.min(16, config.repeticiones) : Math.max(1, totalFotosDisponibles);
+            }
+            return 1;
+        }
+
+        function inicializarSlotsParaLayout(numFotosSugerido = null) {
+            acomodoManual = false;
+            etiquetasEspecialesSlots = {};
+
+            if (numFotosSugerido !== null) {
+                totalFotosDisponibles = Math.max(1, numFotosSugerido);
+            } else {
+                const slotsFijos = obtenerNumSlotsBase();
+                totalFotosDisponibles = Math.max(1, slotsFijos);
+            }
+
+            const numSlots = obtenerNumSlotsBase();
+            mapaSlots = {};
+            for (let i = 0; i < numSlots; i++) {
+                mapaSlots[i] = i < totalFotosDisponibles ? i : -1;
+            }
+
+            if (config.modo_ine) {
+                etiquetasEspecialesSlots = { 0: "FRENTE", 1: "REVERSO" };
+            }
+        }
+
+        function cambiarTotalFotos(delta) {
+            vibrar();
+            totalFotosDisponibles = Math.max(1, totalFotosDisponibles + delta);
+            document.getElementById('txt-total-fotos').innerText = totalFotosDisponibles;
+
+            // Si es Todo en 1, Tetris o Planilla Automática, la cantidad de recuadros crece/decrece dinámicamente
+            const esDinamico = config.modo_todo_en_uno || config.modo_tetris ||
+                (['planilla_infantil', 'planilla_pasaporte', 'planilla_custom'].includes(config.layout_id) && config.repeticiones === 0);
+
+            if (esDinamico) {
+                const nuevoNumSlots = obtenerNumSlotsBase();
+                const nuevoMapa = {};
+                for (let i = 0; i < nuevoNumSlots; i++) {
+                    nuevoMapa[i] = (mapaSlots[i] !== undefined && mapaSlots[i] < totalFotosDisponibles) ? mapaSlots[i] : i;
+                }
+                mapaSlots = nuevoMapa;
+            } else {
+                // En layouts de casillas fijas, asegurar que ningún slot apunte a una foto inexistente
+                for (let s in mapaSlots) {
+                    if (mapaSlots[s] >= totalFotosDisponibles) {
+                        mapaSlots[s] = -1;
+                    }
+                }
+            }
+            renderizarLienzo();
+        }
+
+        function ciclarSlot(slotIndex) {
+            vibrar();
+            acomodoManual = true;
+            let fotoActual = mapaSlots[slotIndex];
+            fotoActual++;
+            if (fotoActual >= totalFotosDisponibles) {
+                fotoActual = -1; // -1 deja el hueco vacío (X)
+            }
+            mapaSlots[slotIndex] = fotoActual;
+            actualizarLienzoUI();
+        }
+
+        function ordenSecuencialLienzo() {
+            vibrar();
+            acomodoManual = false;
+            const numSlots = obtenerNumSlotsBase();
+            mapaSlots = {};
+            for (let i = 0; i < numSlots; i++) {
+                mapaSlots[i] = i < totalFotosDisponibles ? i : -1;
+            }
+            actualizarLienzoUI();
+        }
+
+        function vaciarTodosSlots() {
+            vibrar();
+            acomodoManual = true;
+            const numSlots = obtenerNumSlotsBase();
+            for (let i = 0; i < numSlots; i++) {
+                mapaSlots[i] = -1;
+            }
+            actualizarLienzoUI();
+        }
+
+        function actualizarLienzoUI() {
+            document.getElementById('txt-total-fotos').innerText = totalFotosDisponibles;
+
+            const badge = document.getElementById('badge-modo-lienzo');
+            if (acomodoManual) {
+                badge.innerText = "Personalizado";
+                badge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800";
+            } else {
+                badge.innerText = "Automático";
+                badge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700";
+            }
+
+            const numSlots = Object.keys(mapaSlots).length;
+            const tamFuente = numSlots >= 8 ? "text-lg" : numSlots >= 5 ? "text-xl" : "text-2xl";
+
+            for (let slot in mapaSlots) {
+                const div = document.getElementById(`sl-${slot}`);
+                if (!div) continue;
+
+                const val = mapaSlots[slot];
+                const etiquetaExtra = etiquetasEspecialesSlots[slot]
+                    ? `<span class="text-[9px] font-bold uppercase tracking-wider opacity-65 block mb-0.5">${etiquetasEspecialesSlots[slot]}</span>`
+                    : '';
+
+                if (val === -1) {
+                    div.innerHTML = `<div class="text-center">${etiquetaExtra}<i class="fa-solid fa-xmark text-red-500 ${tamFuente} opacity-60"></i><span class="block text-[9px] text-red-400 font-semibold">Vacío</span></div>`;
+                    div.className = "w-full h-full bg-gray-100 border-2 border-dashed border-gray-300 rounded flex items-center justify-center cursor-pointer active:scale-95 transition-all";
+                } else {
+                    div.innerHTML = `<div class="text-center leading-none">${etiquetaExtra}<span class="${tamFuente} font-extrabold text-blue-800">${val + 1}</span><span class="block text-[9px] text-blue-600 font-semibold mt-0.5">Foto ${val + 1}</span></div>`;
+                    div.className = "w-full h-full wire-box flex items-center justify-center cursor-pointer hover:bg-blue-300 active:scale-95 transition-all shadow-sm";
+                }
+            }
+        }
+
+        function renderizarLienzo() {
+            const contenedor = document.getElementById('lienzo-container');
+            const subtitulo = document.getElementById('subtitulo-lienzo');
+            const lid = config.layout_id;
+            const esHoriz = config.orientacion === 'horizontal';
+            const dimHoja = esHoriz ? "w-full h-52" : "w-56 h-72";
+
+            // Asegurar que mapaSlots tenga las casillas correctas
+            const numSlotsEsperados = obtenerNumSlotsBase();
+            if (Object.keys(mapaSlots).length !== numSlotsEsperados) {
+                mapaSlots = {};
+                for (let i = 0; i < numSlotsEsperados; i++) {
+                    mapaSlots[i] = i < totalFotosDisponibles ? i : -1;
+                }
+            }
+
+            // 1. MODO COPIA INE
+            if (config.modo_ine) {
+                subtitulo.innerHTML = `Modo INE: Toca para elegir qué foto va en <b>Frente</b> y <b>Reverso</b> o deja uno en <b class="text-red-500">X</b>.`;
+                contenedor.innerHTML = `
+                <div class="${dimHoja} wire-sheet flex flex-col items-center justify-around p-3 bg-white">
+                    <div class="w-4/5 h-[42%]" id="sl-0" onclick="ciclarSlot(0)"></div>
+                    <div class="w-4/5 h-[42%]" id="sl-1" onclick="ciclarSlot(1)"></div>
+                </div>`;
+                actualizarLienzoUI();
+                return;
+            }
+
+            // 2. MODO TETRIS
+            if (config.modo_tetris) {
+                subtitulo.innerHTML = `Modo Tetris: Elige qué fotos empaquetar (puedes repetir un número o descartar con <b class="text-red-500">X</b>).`;
+                let celdas = '';
+                for (let i = 0; i < numSlotsEsperados; i++) {
+                    const spanClass = (i === 0 && numSlotsEsperados % 2 !== 0 && numSlotsEsperados > 1) ? "col-span-2" : "";
+                    celdas += `<div class="${spanClass} min-h-[56px]" id="sl-${i}" onclick="ciclarSlot(${i})"></div>`;
+                }
+                contenedor.innerHTML = `
+                <div class="${dimHoja} wire-sheet grid grid-cols-2 gap-1.5 p-2 bg-white overflow-y-auto">
+                    ${celdas}
+                </div>`;
+                actualizarLienzoUI();
+                return;
+            }
+
+            // 3. MODO PLANILLAS (INFANTIL / PASAPORTE / CUSTOM)
+            if (['planilla_infantil', 'planilla_pasaporte', 'planilla_custom'].includes(lid)) {
+                if (config.repeticiones === 0) {
+                    subtitulo.innerHTML = `Planilla Llenado Automático: Elige qué foto(s) se repetirán hasta llenar toda la hoja.`;
+                } else {
+                    subtitulo.innerHTML = `Planilla (${config.repeticiones} fotos): Toca cada casilla para elegir qué foto va en cada posición.`;
+                }
+                const cols = numSlotsEsperados === 1 ? 1 : numSlotsEsperados <= 4 ? 2 : 3;
+                let celdas = '';
+                for (let i = 0; i < numSlotsEsperados; i++) {
+                    celdas += `<div class="min-h-[48px]" id="sl-${i}" onclick="ciclarSlot(${i})"></div>`;
+                }
+                contenedor.innerHTML = `
+                <div class="${dimHoja} wire-sheet grid grid-cols-${cols} gap-1.5 p-2 bg-white overflow-y-auto">
+                    ${celdas}
+                </div>`;
+                actualizarLienzoUI();
+                return;
+            }
+
+            // 4. MODO TODO EN 1 HOJA
+            if (config.modo_todo_en_uno) {
+                subtitulo.innerHTML = `Todo en 1 Hoja: Usa <b>- / +</b> en "Fotos enviadas" para ajustar cuántas fotos entrarán en la hoja.`;
+                const cols = numSlotsEsperados === 1 ? 1 : 2;
+                const rows = Math.ceil(numSlotsEsperados / cols);
+                let celdas = '';
+                for (let i = 0; i < numSlotsEsperados; i++) {
+                    celdas += `<div id="sl-${i}" onclick="ciclarSlot(${i})"></div>`;
+                }
+                contenedor.innerHTML = `
+                <div class="${dimHoja} wire-sheet grid grid-cols-${cols} gap-1.5 p-1.5 bg-white" style="grid-template-rows: repeat(${rows}, minmax(0, 1fr));">
+                    ${celdas}
+                </div>`;
+                actualizarLienzoUI();
+                return;
+            }
+
+            // 5. LAYOUTS ESTÁNDAR (1, 2, 4, 6, 8) Y ASIMÉTRICOS (3 y 5)
+            subtitulo.innerHTML = `Toca cada espacio para rotar qué foto va ahí. Pon <b class="text-red-500">X</b> para dejar ese espacio en blanco.`;
+
+            if (lid === 'layout_1') {
+                contenedor.innerHTML = `
+                <div class="${dimHoja} wire-sheet p-2 bg-white">
+                    <div class="w-full h-full" id="sl-0" onclick="ciclarSlot(0)"></div>
+                </div>`;
+            } else if (lid === 'layout_2_horiz') {
+                contenedor.innerHTML = `
+                <div class="${dimHoja} wire-sheet flex flex-col gap-2 p-2 bg-white">
+                    <div class="w-full h-1/2" id="sl-0" onclick="ciclarSlot(0)"></div>
+                    <div class="w-full h-1/2" id="sl-1" onclick="ciclarSlot(1)"></div>
+                </div>`;
+            } else if (lid === 'layout_2_vert') {
+                contenedor.innerHTML = `
+                <div class="${dimHoja} wire-sheet flex flex-row gap-2 p-2 bg-white">
+                    <div class="w-1/2 h-full" id="sl-0" onclick="ciclarSlot(0)"></div>
+                    <div class="w-1/2 h-full" id="sl-1" onclick="ciclarSlot(1)"></div>
+                </div>`;
+            } else if (lid === 'layout_4') {
+                contenedor.innerHTML = `
+                <div class="${dimHoja} wire-sheet grid grid-cols-2 grid-rows-2 gap-2 p-2 bg-white">
+                    <div id="sl-0" onclick="ciclarSlot(0)"></div>
+                    <div id="sl-1" onclick="ciclarSlot(1)"></div>
+                    <div id="sl-2" onclick="ciclarSlot(2)"></div>
+                    <div id="sl-3" onclick="ciclarSlot(3)"></div>
+                </div>`;
+            } else if (lid === 'layout_6') {
+                contenedor.innerHTML = `
+                <div class="${dimHoja} wire-sheet grid grid-cols-2 grid-rows-3 gap-1.5 p-2 bg-white">
+                    <div id="sl-0" onclick="ciclarSlot(0)"></div>
+                    <div id="sl-1" onclick="ciclarSlot(1)"></div>
+                    <div id="sl-2" onclick="ciclarSlot(2)"></div>
+                    <div id="sl-3" onclick="ciclarSlot(3)"></div>
+                    <div id="sl-4" onclick="ciclarSlot(4)"></div>
+                    <div id="sl-5" onclick="ciclarSlot(5)"></div>
+                </div>`;
+            } else if (lid === 'layout_8') {
+                contenedor.innerHTML = `
+                <div class="${dimHoja} wire-sheet grid grid-cols-2 grid-rows-4 gap-1 p-1.5 bg-white">
+                    <div id="sl-0" onclick="ciclarSlot(0)"></div>
+                    <div id="sl-1" onclick="ciclarSlot(1)"></div>
+                    <div id="sl-2" onclick="ciclarSlot(2)"></div>
+                    <div id="sl-3" onclick="ciclarSlot(3)"></div>
+                    <div id="sl-4" onclick="ciclarSlot(4)"></div>
+                    <div id="sl-5" onclick="ciclarSlot(5)"></div>
+                    <div id="sl-6" onclick="ciclarSlot(6)"></div>
+                    <div id="sl-7" onclick="ciclarSlot(7)"></div>
+                </div>`;
+            } else if (lid === 'layout_asim_3_top') {
+                contenedor.innerHTML = `
+                <div class="${dimHoja} wire-sheet flex flex-col gap-1.5 p-1.5 bg-white">
+                    <div class="w-full h-[52%]" id="sl-0" onclick="ciclarSlot(0)"></div>
+                    <div class="w-full h-[48%] flex gap-1.5">
+                        <div class="w-1/2 h-full" id="sl-1" onclick="ciclarSlot(1)"></div>
+                        <div class="w-1/2 h-full" id="sl-2" onclick="ciclarSlot(2)"></div>
+                    </div>
+                </div>`;
+            } else if (lid === 'layout_asim_3_bottom') {
+                contenedor.innerHTML = `
+                <div class="${dimHoja} wire-sheet flex flex-col gap-1.5 p-1.5 bg-white">
+                    <div class="w-full h-[48%] flex gap-1.5">
+                        <div class="w-1/2 h-full" id="sl-0" onclick="ciclarSlot(0)"></div>
+                        <div class="w-1/2 h-full" id="sl-1" onclick="ciclarSlot(1)"></div>
+                    </div>
+                    <div class="w-full h-[52%]" id="sl-2" onclick="ciclarSlot(2)"></div>
+                </div>`;
+            } else if (lid === 'layout_asim_3_left') {
+                contenedor.innerHTML = `
+                <div class="${dimHoja} wire-sheet flex flex-row gap-1.5 p-1.5 bg-white">
+                    <div class="w-[52%] h-full" id="sl-0" onclick="ciclarSlot(0)"></div>
+                    <div class="w-[48%] h-full flex flex-col gap-1.5">
+                        <div class="w-full h-1/2" id="sl-1" onclick="ciclarSlot(1)"></div>
+                        <div class="w-full h-1/2" id="sl-2" onclick="ciclarSlot(2)"></div>
+                    </div>
+                </div>`;
+            } else if (lid === 'layout_asim_3_right') {
+                contenedor.innerHTML = `
+                <div class="${dimHoja} wire-sheet flex flex-row gap-1.5 p-1.5 bg-white">
+                    <div class="w-[48%] h-full flex flex-col gap-1.5">
+                        <div class="w-full h-1/2" id="sl-0" onclick="ciclarSlot(0)"></div>
+                        <div class="w-full h-1/2" id="sl-1" onclick="ciclarSlot(1)"></div>
+                    </div>
+                    <div class="w-[52%] h-full" id="sl-2" onclick="ciclarSlot(2)"></div>
+                </div>`;
+            } else if (lid === 'layout_asim_5_top') {
+                contenedor.innerHTML = `
+                <div class="${dimHoja} wire-sheet flex flex-col gap-1.5 p-1.5 bg-white">
+                    <div class="w-full h-[44%]" id="sl-0" onclick="ciclarSlot(0)"></div>
+                    <div class="w-full h-[56%] grid grid-cols-2 grid-rows-2 gap-1.5">
+                        <div id="sl-1" onclick="ciclarSlot(1)"></div>
+                        <div id="sl-2" onclick="ciclarSlot(2)"></div>
+                        <div id="sl-3" onclick="ciclarSlot(3)"></div>
+                        <div id="sl-4" onclick="ciclarSlot(4)"></div>
+                    </div>
+                </div>`;
+            } else if (lid === 'layout_asim_5_bottom') {
+                contenedor.innerHTML = `
+                <div class="${dimHoja} wire-sheet flex flex-col gap-1.5 p-1.5 bg-white">
+                    <div class="w-full h-[56%] grid grid-cols-2 grid-rows-2 gap-1.5">
+                        <div id="sl-0" onclick="ciclarSlot(0)"></div>
+                        <div id="sl-1" onclick="ciclarSlot(1)"></div>
+                        <div id="sl-2" onclick="ciclarSlot(2)"></div>
+                        <div id="sl-3" onclick="ciclarSlot(3)"></div>
+                    </div>
+                    <div class="w-full h-[44%]" id="sl-4" onclick="ciclarSlot(4)"></div>
+                </div>`;
+            } else if (lid === 'layout_asim_5_center') {
+                contenedor.innerHTML = `
+                <div class="${dimHoja} wire-sheet flex flex-col gap-1 p-1.5 bg-white">
+                    <div class="w-full h-[28%] flex gap-1">
+                        <div class="w-1/2 h-full" id="sl-0" onclick="ciclarSlot(0)"></div>
+                        <div class="w-1/2 h-full" id="sl-1" onclick="ciclarSlot(1)"></div>
+                    </div>
+                    <div class="w-full h-[44%]" id="sl-2" onclick="ciclarSlot(2)"></div>
+                    <div class="w-full h-[28%] flex gap-1">
+                        <div class="w-1/2 h-full" id="sl-3" onclick="ciclarSlot(3)"></div>
+                        <div class="w-1/2 h-full" id="sl-4" onclick="ciclarSlot(4)"></div>
+                    </div>
+                </div>`;
+            } else if (lid === 'layout_asim_5_left') {
+                contenedor.innerHTML = `
+                <div class="${dimHoja} wire-sheet flex flex-row gap-1.5 p-1.5 bg-white">
+                    <div class="w-[46%] h-full" id="sl-0" onclick="ciclarSlot(0)"></div>
+                    <div class="w-[54%] h-full grid grid-cols-2 grid-rows-2 gap-1.5">
+                        <div id="sl-1" onclick="ciclarSlot(1)"></div>
+                        <div id="sl-2" onclick="ciclarSlot(2)"></div>
+                        <div id="sl-3" onclick="ciclarSlot(3)"></div>
+                        <div id="sl-4" onclick="ciclarSlot(4)"></div>
+                    </div>
+                </div>`;
+            }
+
+            actualizarLienzoUI();
+        }
+
         function cambiarTab(tab) {
             vibrar();
             const esImprimir = (tab === 'imprimir');
@@ -600,10 +988,8 @@
         }
 
         function updateUI() {
-            // Copias
             document.getElementById('txt-copias').innerText = config.copias;
 
-            // Color
             const btnBn = document.getElementById('btn-bn');
             const btnColor = document.getElementById('btn-color');
             document.getElementById('icon-color').style.color = config.color ? '#ec4899' : '#6b7280';
@@ -615,21 +1001,18 @@
                 btnColor.className = "px-3 py-2 text-xs font-bold card";
             }
 
-            // Presets activos
             document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('selected-item'));
             if (presetActivo) {
                 const pBtn = document.getElementById(`preset-${presetActivo}`);
                 if (pBtn) pBtn.classList.add('selected-item');
             }
 
-            // Layouts activos
             document.querySelectorAll('.layout-btn').forEach(btn => btn.classList.remove('selected-item'));
             if (config.layout_id) {
                 const activeBtn = document.querySelector(`[data-id="${config.layout_id}"]`);
                 if (activeBtn) activeBtn.classList.add('selected-item');
             }
 
-            // Panel contextual de Planillas
             const esPlanilla = ['planilla_infantil', 'planilla_pasaporte', 'planilla_custom'].includes(config.layout_id);
             document.getElementById('panel-planilla').classList.toggle('hidden', !esPlanilla);
             document.getElementById('inputs-custom-cm').classList.toggle('hidden', config.layout_id !== 'planilla_custom');
@@ -638,16 +1021,15 @@
                 ? "px-2.5 py-1.5 rounded-lg text-xs font-bold border border-blue-500 bg-blue-500 text-white"
                 : "px-2.5 py-1.5 rounded-lg text-xs font-bold card";
 
-            // Bandeja
+            renderizarLienzo();
+
             document.querySelectorAll('.bandeja-btn').forEach(btn => btn.classList.remove('selected-item'));
             const bBtn = document.querySelector(`[data-bandeja="${config.bandeja}"]`);
             if (bBtn) bBtn.classList.add('selected-item');
 
-            // Aviso papel especial
             const requierePosterior = (config.tamano_papel === 'oficio' || config.tipo_papel === 'fotografico');
             document.getElementById('badge-bandeja-aviso').classList.toggle('hidden', !requierePosterior);
 
-            // Avanzados
             document.getElementById('sel-papel').value = config.tamano_papel;
             document.getElementById('sel-tipo').value = config.tipo_papel;
             document.getElementById('sel-orientacion').value = config.orientacion;
@@ -663,6 +1045,7 @@
             config = estadoInicial();
             presetActivo = null;
             document.getElementById('input-rango').value = '';
+            inicializarSlotsParaLayout(1);
             updateUI();
         }
 
@@ -687,6 +1070,7 @@
         function setRepeticiones(val) {
             vibrar();
             config.repeticiones = val;
+            inicializarSlotsParaLayout(totalFotosDisponibles);
             updateUI();
         }
 
@@ -697,6 +1081,7 @@
             } else {
                 config.repeticiones = Math.max(0, config.repeticiones + delta);
             }
+            inicializarSlotsParaLayout(totalFotosDisponibles);
             updateUI();
         }
 
@@ -707,6 +1092,7 @@
             config.modo_tetris = false;
             config.modo_todo_en_uno = false;
             config.modo_ine = false;
+            inicializarSlotsParaLayout();
             updateUI();
         }
 
@@ -718,31 +1104,36 @@
             if (tipo === 'ine') {
                 config.modo_ine = true;
                 config.layout_id = 'modo_especial';
+                inicializarSlotsParaLayout(2);
             } else if (tipo === 'escaner') {
                 config.modo_escaner = true;
                 config.layout_id = 'layout_1';
+                inicializarSlotsParaLayout(1);
             } else if (tipo === 'color') {
                 config.color = true;
                 config.layout_id = 'layout_1';
+                inicializarSlotsParaLayout(1);
             } else if (tipo === 'tetris') {
                 config.modo_tetris = true;
                 config.color = true;
                 config.layout_id = 'modo_especial';
+                inicializarSlotsParaLayout(4);
             } else if (tipo === 'todo_en_uno') {
                 config.modo_todo_en_uno = true;
                 config.color = true;
                 config.layout_id = 'modo_especial';
+                inicializarSlotsParaLayout(4);
             } else if (tipo === 'foto') {
                 config.tipo_papel = 'fotografico';
                 config.color = true;
                 config.sin_bordes = true;
                 config.bandeja = 'rear';
                 config.layout_id = 'layout_1';
+                inicializarSlotsParaLayout(1);
             }
             updateUI();
         }
 
-        // Sincronizar controles avanzados
         document.getElementById('sel-papel').addEventListener('change', (e) => {
             config.tamano_papel = e.target.value;
             if (config.tamano_papel === 'oficio') config.bandeja = 'rear';
@@ -753,14 +1144,16 @@
             if (config.tipo_papel === 'fotografico') config.bandeja = 'rear';
             updateUI();
         });
-        document.getElementById('sel-orientacion').addEventListener('change', (e) => { config.orientacion = e.target.value; });
+        document.getElementById('sel-orientacion').addEventListener('change', (e) => {
+            config.orientacion = e.target.value;
+            updateUI();
+        });
         document.getElementById('sel-rotacion').addEventListener('change', (e) => { config.forzar_rotacion = e.target.value; });
         document.getElementById('sel-escala').addEventListener('change', (e) => { config.escala_porcentaje = parseInt(e.target.value, 10); });
         document.getElementById('check-doble').addEventListener('change', (e) => { config.doble_cara = e.target.checked; });
         document.getElementById('check-escaner').addEventListener('change', (e) => { config.modo_escaner = e.target.checked; });
         document.getElementById('check-sin-bordes').addEventListener('change', (e) => { config.sin_bordes = e.target.checked; });
 
-        // Enviar solicitud de reporte financiero
         function pedirReporte(periodo) {
             vibrar();
             tg.sendData(JSON.stringify({
@@ -769,7 +1162,6 @@
             }));
         }
 
-        // Botón principal nativo de Telegram
         tg.MainButton.text = "💰 COTIZAR Y VER VISTA PREVIA";
         tg.MainButton.color = "#10b981";
         tg.MainButton.textColor = "#ffffff";
@@ -777,6 +1169,9 @@
 
         tg.MainButton.onClick(() => {
             config.rango = document.getElementById('input-rango').value.trim();
+            config.mapa_slots = mapaSlots;
+            config.acomodo_manual = acomodoManual;
+            config.total_fotos_lienzo = totalFotosDisponibles;
             if (config.layout_id === 'planilla_custom') {
                 config.ancho_cm = parseFloat(document.getElementById('input-ancho-cm').value) || 5.0;
                 config.alto_cm = parseFloat(document.getElementById('input-alto-cm').value) || 5.0;
@@ -784,6 +1179,7 @@
             tg.sendData(JSON.stringify(config));
         });
 
+        inicializarSlotsParaLayout(1);
         updateUI();
     </script>
 </body>
