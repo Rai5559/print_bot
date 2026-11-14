@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Panel de Impresión</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-main: var(--tg-theme-bg-color, #f3f4f6);
+            --bg-card: var(--tg-theme-secondary-bg-color, #ffffff);
+            --text-main: var(--tg-theme-text-color, #111827);
+            --text-hint: var(--tg-theme-hint-color, #6b7280);
+            --accent: var(--tg-theme-button-color, #2563eb);
+            --accent-text: var(--tg-theme-button-text-color, #ffffff);
+        }
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid rgba(128, 128, 128, 0.2);
+        }
+        .selected-item {
+            border: 2px solid var(--accent) !important;
+            background-color: rgba(37, 99, 235, 0.12) !important;
+        }
+        .tab-active {
+            background-color: var(--accent);
+            color: var(--accent-text);
+        }
+        .wire-sheet {
+            border: 1.5px solid #6b7280;
+            background-color: #ffffff;
+            border-radius: 3px;
+            padding: 2px;
+        }
+        .wire-box {
+            background-color: #93c5fd;
+            border: 1px solid #3b82f6;
+            border-radius: 1px;
+        }
+        .wire-box-alt {
+            background-color: #60a5fa;
+            border: 1px solid #2563eb;
+            border-radius: 1px;
+        }
+        .input-clean {
+            background-color: #ffffff;
+            color: #111827;
+            border: 1px solid #d1d5db;
+        }
+    </style>
+</head>
+<body class="p-3 pb-28 select-none">
+
+    <!-- BARRA SUPERIOR: PESTAÑAS + REINICIAR -->
+    <div class="flex items-center justify-between gap-2 mb-4">
+        <div class="flex flex-1 card p-1 rounded-xl shadow-sm">
+            <button id="tab-btn-imprimir" onclick="cambiarTab('imprimir')" class="flex-1 py-2 px-3 rounded-lg text-sm font-bold transition-all tab-active">
+                <i class="fa-solid fa-print mr-1"></i> Imprimir
+            </button>
+            <button id="tab-btn-reportes" onclick="cambiarTab('reportes')" class="flex-1 py-2 px-3 rounded-lg text-sm font-bold transition-all">
+                <i class="fa-solid fa-chart-pie mr-1"></i> Reportes
+            </button>
+        </div>
+        <button id="btn-reset" onclick="reiniciarConfig()" title="Reiniciar valores" class="card p-2.5 rounded-xl shadow-sm text-gray-500 active:scale-90 transition-transform">
+            <i class="fa-solid fa-rotate-left"></i>
+        </button>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- PESTAÑA 1: PANEL DE IMPRESIÓN                                         -->
+    <!-- ===================================================================== -->
+    <div id="vista-imprimir">
+
+        <!-- ZONA 1: ACCESOS RÁPIDOS (1 TOQUE) -->
+        <h2 class="text-xs font-bold uppercase tracking-wider mb-2 opacity-70">⚡ Accesos Rápidos (1 Toque)</h2>
+        <div class="grid grid-cols-2 gap-2 mb-5">
+            <button onclick="aplicarPreset('ine')" id="preset-ine" class="preset-btn card p-3 rounded-xl flex items-center gap-2.5 shadow-sm active:scale-95 transition-transform">
+                <div class="w-9 h-9 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-id-card text-lg"></i>
+                </div>
+                <div class="text-left">
+                    <p class="text-sm font-bold leading-tight">Copia INE</p>
+                    <p class="text-[11px] opacity-65">Fondo blanco B/N</p>
+                </div>
+            </button>
+
+            <button onclick="aplicarPreset('escaner')" id="preset-escaner" class="preset-btn card p-3 rounded-xl flex items-center gap-2.5 shadow-sm active:scale-95 transition-transform">
+                <div class="w-9 h-9 rounded-lg bg-gray-200 text-gray-800 flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-file-contract text-lg"></i>
+                </div>
+                <div class="text-left">
+                    <p class="text-sm font-bold leading-tight">Escáner B/N</p>
+                    <p class="text-[11px] opacity-65">Quita sombras</p>
+                </div>
+            </button>
+
+            <button onclick="aplicarPreset('color')" id="preset-color" class="preset-btn card p-3 rounded-xl flex items-center gap-2.5 shadow-sm active:scale-95 transition-transform">
+                <div class="w-9 h-9 rounded-lg bg-pink-100 text-pink-600 flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-palette text-lg"></i>
+                </div>
+                <div class="text-left">
+                    <p class="text-sm font-bold leading-tight">Normal Color</p>
+                    <p class="text-[11px] opacity-65">Carta a color</p>
+                </div>
+            </button>
+
+            <button onclick="aplicarPreset('tetris')" id="preset-tetris" class="preset-btn card p-3 rounded-xl flex items-center gap-2.5 shadow-sm active:scale-95 transition-transform">
+                <div class="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-puzzle-piece text-lg"></i>
+                </div>
+                <div class="text-left">
+                    <p class="text-sm font-bold leading-tight">Modo Tetris</p>
+                    <p class="text-[11px] opacity-65">Ahorro máximo</p>
+                </div>
+            </button>
+
+            <button onclick="aplicarPreset('todo_en_uno')" id="preset-todo_en_uno" class="preset-btn card p-3 rounded-xl flex items-center gap-2.5 shadow-sm active:scale-95 transition-transform">
+                <div class="w-9 h-9 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-table-cells-large text-lg"></i>
+                </div>
+                <div class="text-left">
+                    <p class="text-sm font-bold leading-tight">Todo en 1 Hoja</p>
+                    <p class="text-[11px] opacity-65">Auto cuadrícula</p>
+                </div>
+            </button>
+
+            <button onclick="aplicarPreset('foto')" id="preset-foto" class="preset-btn card p-3 rounded-xl flex items-center gap-2.5 shadow-sm active:scale-95 transition-transform">
+                <div class="w-9 h-9 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-camera-retro text-lg"></i>
+                </div>
+                <div class="text-left">
+                    <p class="text-sm font-bold leading-tight">Foto Glossy</p>
+                    <p class="text-[11px] opacity-65">Bandeja posterior</p>
+                </div>
+            </button>
+        </div>
+
+        <!-- ZONA 2: SELECTOR VISUAL DE LAYOUTS -->
+        <h2 class="text-xs font-bold uppercase tracking-wider mb-2 opacity-70">🎨 Acomodo en Hoja</h2>
+
+        <!-- 2A. CUADRÍCULAS Y PLANILLAS -->
+        <p class="text-[11px] font-semibold opacity-60 mb-1.5">Estándar y Planillas Exactas</p>
+        <div class="grid grid-cols-3 gap-2 mb-3">
+            <!-- 1 Completa -->
+            <div onclick="selectLayout('layout_1')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm selected-item" data-id="layout_1">
+                <div class="w-7 h-9 wire-sheet"><div class="w-full h-full wire-box"></div></div>
+                <span class="text-[11px] mt-1 font-bold">1 Completa</span>
+            </div>
+
+            <!-- 2 Apiladas -->
+            <div onclick="selectLayout('layout_2_horiz')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_2_horiz">
+                <div class="w-7 h-9 wire-sheet flex flex-col gap-0.5">
+                    <div class="w-full h-1/2 wire-box"></div>
+                    <div class="w-full h-1/2 wire-box-alt"></div>
+                </div>
+                <span class="text-[11px] mt-1 font-bold">2 Apiladas</span>
+            </div>
+
+            <!-- 2 Lado a Lado -->
+            <div onclick="selectLayout('layout_2_vert')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_2_vert">
+                <div class="w-7 h-9 wire-sheet flex gap-0.5">
+                    <div class="w-1/2 h-full wire-box"></div>
+                    <div class="w-1/2 h-full wire-box-alt"></div>
+                </div>
+                <span class="text-[11px] mt-1 font-bold">2 Lado/Lado</span>
+            </div>
+
+            <!-- Grid 4 (2x2) -->
+            <div onclick="selectLayout('layout_4')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_4">
+                <div class="w-7 h-9 wire-sheet grid grid-cols-2 grid-rows-2 gap-0.5">
+                    <div class="wire-box"></div><div class="wire-box-alt"></div>
+                    <div class="wire-box-alt"></div><div class="wire-box"></div>
+                </div>
+                <span class="text-[11px] mt-1 font-bold">Grid 4</span>
+            </div>
+
+            <!-- Grid 6 (2x3) -->
+            <div onclick="selectLayout('layout_6')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_6">
+                <div class="w-7 h-9 wire-sheet grid grid-cols-2 grid-rows-3 gap-0.5">
+                    <div class="wire-box"></div><div class="wire-box-alt"></div>
+                    <div class="wire-box-alt"></div><div class="wire-box"></div>
+                    <div class="wire-box"></div><div class="wire-box-alt"></div>
+                </div>
+                <span class="text-[11px] mt-1 font-bold">Grid 6</span>
+            </div>
+
+            <!-- Grid 8 (2x4) -->
+            <div onclick="selectLayout('layout_8')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_8">
+                <div class="w-7 h-9 wire-sheet grid grid-cols-2 grid-rows-4 gap-[1px]">
+                    <div class="wire-box"></div><div class="wire-box-alt"></div>
+                    <div class="wire-box-alt"></div><div class="wire-box"></div>
+                    <div class="wire-box"></div><div class="wire-box-alt"></div>
+                    <div class="wire-box-alt"></div><div class="wire-box"></div>
+                </div>
+                <span class="text-[11px] mt-1 font-bold">Grid 8</span>
+            </div>
+
+            <!-- Planilla Infantil -->
+            <div onclick="selectLayout('planilla_infantil')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="planilla_infantil">
+                <i class="fa-solid fa-child-reaching text-blue-500 text-lg my-1"></i>
+                <span class="text-[11px] font-bold text-center leading-tight">Infantil<br><span class="text-[9px] font-normal opacity-70">2.5 × 3 cm</span></span>
+            </div>
+
+            <!-- Planilla Pasaporte -->
+            <div onclick="selectLayout('planilla_pasaporte')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="planilla_pasaporte">
+                <i class="fa-solid fa-passport text-indigo-500 text-lg my-1"></i>
+                <span class="text-[11px] font-bold text-center leading-tight">Pasaporte<br><span class="text-[9px] font-normal opacity-70">3.5 × 4.5 cm</span></span>
+            </div>
+
+            <!-- Planilla Medida Exacta -->
+            <div onclick="selectLayout('planilla_custom')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="planilla_custom">
+                <i class="fa-solid fa-ruler-combined text-amber-500 text-lg my-1"></i>
+                <span class="text-[11px] font-bold text-center leading-tight">Medida cm<br><span class="text-[9px] font-normal opacity-70">Personalizada</span></span>
+            </div>
+        </div>
+
+        <!-- PANEL CONTEXTUAL PARA PLANILLAS (SOLO SE MUESTRA AL ELEGIR INFANTIL / PASAPORTE / MEDIDA CM) -->
+        <div id="panel-planilla" class="hidden card rounded-xl p-3 mb-4 border-l-4 border-l-blue-500 space-y-3">
+            <div id="inputs-custom-cm" class="hidden grid grid-cols-2 gap-2">
+                <div>
+                    <label class="text-[11px] font-bold block mb-1">Ancho (cm)</label>
+                    <input type="number" id="input-ancho-cm" step="0.1" value="5.0" min="1" max="21" class="input-clean w-full rounded-lg p-2 text-sm font-bold">
+                </div>
+                <div>
+                    <label class="text-[11px] font-bold block mb-1">Alto (cm)</label>
+                    <input type="number" id="input-alto-cm" step="0.1" value="5.0" min="1" max="34" class="input-clean w-full rounded-lg p-2 text-sm font-bold">
+                </div>
+            </div>
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-bold">Fotos por hoja</p>
+                    <p class="text-[10px] opacity-65">0 = Llenar toda la hoja</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="setRepeticiones(0)" id="btn-rep-llenar" class="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-blue-500 bg-blue-500 text-white">Llenar</button>
+                    <button onclick="cambiarRepeticiones(-1)" class="w-8 h-8 rounded-lg card font-bold text-base">-</button>
+                    <span id="txt-repeticiones" class="text-sm font-bold w-6 text-center">Auto</span>
+                    <button onclick="cambiarRepeticiones(1)" class="w-8 h-8 rounded-lg card font-bold text-base">+</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2B. COMBINACIONES DISPAREJAS PARA 3 IMÁGENES -->
+        <p class="text-[11px] font-semibold opacity-60 mb-1.5">Combinaciones para 3 Imágenes</p>
+        <div class="grid grid-cols-4 gap-2 mb-3">
+            <!-- 3 Top (1 arriba + 2 abajo) -->
+            <div onclick="selectLayout('layout_asim_3_top')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_asim_3_top">
+                <div class="w-7 h-9 wire-sheet flex flex-col gap-0.5">
+                    <div class="w-full h-1/2 wire-box-alt"></div>
+                    <div class="w-full h-1/2 flex gap-0.5">
+                        <div class="w-1/2 h-full wire-box"></div>
+                        <div class="w-1/2 h-full wire-box"></div>
+                    </div>
+                </div>
+                <span class="text-[10px] mt-1 font-bold text-center">1 Arr + 2</span>
+            </div>
+
+            <!-- 3 Bottom (2 arriba + 1 abajo) -->
+            <div onclick="selectLayout('layout_asim_3_bottom')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_asim_3_bottom">
+                <div class="w-7 h-9 wire-sheet flex flex-col gap-0.5">
+                    <div class="w-full h-1/2 flex gap-0.5">
+                        <div class="w-1/2 h-full wire-box"></div>
+                        <div class="w-1/2 h-full wire-box"></div>
+                    </div>
+                    <div class="w-full h-1/2 wire-box-alt"></div>
+                </div>
+                <span class="text-[10px] mt-1 font-bold text-center">2 + 1 Abj</span>
+            </div>
+
+            <!-- 3 Left (1 izq + 2 der) -->
+            <div onclick="selectLayout('layout_asim_3_left')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_asim_3_left">
+                <div class="w-7 h-9 wire-sheet flex gap-0.5">
+                    <div class="w-1/2 h-full wire-box-alt"></div>
+                    <div class="w-1/2 h-full flex flex-col gap-0.5">
+                        <div class="w-full h-1/2 wire-box"></div>
+                        <div class="w-full h-1/2 wire-box"></div>
+                    </div>
+                </div>
+                <span class="text-[10px] mt-1 font-bold text-center">1 Izq + 2</span>
+            </div>
+
+            <!-- 3 Right (2 izq + 1 der) -->
+            <div onclick="selectLayout('layout_asim_3_right')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_asim_3_right">
+                <div class="w-7 h-9 wire-sheet flex gap-0.5">
+                    <div class="w-1/2 h-full flex flex-col gap-0.5">
+                        <div class="w-full h-1/2 wire-box"></div>
+                        <div class="w-full h-1/2 wire-box"></div>
+                    </div>
+                    <div class="w-1/2 h-full wire-box-alt"></div>
+                </div>
+                <span class="text-[10px] mt-1 font-bold text-center">2 + 1 Der</span>
+            </div>
+        </div>
+
+        <!-- 2C. COMBINACIONES DISPAREJAS PARA 5 IMÁGENES -->
+        <p class="text-[11px] font-semibold opacity-60 mb-1.5">Combinaciones para 5 Imágenes</p>
+        <div class="grid grid-cols-4 gap-2 mb-5">
+            <!-- 5 Top (1 grande arriba + 4 abajo) -->
+            <div onclick="selectLayout('layout_asim_5_top')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_asim_5_top">
+                <div class="w-7 h-9 wire-sheet flex flex-col gap-0.5">
+                    <div class="w-full h-[44%] wire-box-alt"></div>
+                    <div class="w-full h-[56%] grid grid-cols-2 grid-rows-2 gap-[1px]">
+                        <div class="wire-box"></div><div class="wire-box"></div>
+                        <div class="wire-box"></div><div class="wire-box"></div>
+                    </div>
+                </div>
+                <span class="text-[10px] mt-1 font-bold text-center">1 Arr + 4</span>
+            </div>
+
+            <!-- 5 Bottom (4 arriba + 1 grande abajo) -->
+            <div onclick="selectLayout('layout_asim_5_bottom')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_asim_5_bottom">
+                <div class="w-7 h-9 wire-sheet flex flex-col gap-0.5">
+                    <div class="w-full h-[56%] grid grid-cols-2 grid-rows-2 gap-[1px]">
+                        <div class="wire-box"></div><div class="wire-box"></div>
+                        <div class="wire-box"></div><div class="wire-box"></div>
+                    </div>
+                    <div class="w-full h-[44%] wire-box-alt"></div>
+                </div>
+                <span class="text-[10px] mt-1 font-bold text-center">4 + 1 Abj</span>
+            </div>
+
+            <!-- 5 Center (2 arriba + 1 centro + 2 abajo) -->
+            <div onclick="selectLayout('layout_asim_5_center')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_asim_5_center">
+                <div class="w-7 h-9 wire-sheet flex flex-col gap-[1px]">
+                    <div class="w-full h-[28%] flex gap-[1px]">
+                        <div class="w-1/2 h-full wire-box"></div>
+                        <div class="w-1/2 h-full wire-box"></div>
+                    </div>
+                    <div class="w-full h-[44%] wire-box-alt"></div>
+                    <div class="w-full h-[28%] flex gap-[1px]">
+                        <div class="w-1/2 h-full wire-box"></div>
+                        <div class="w-1/2 h-full wire-box"></div>
+                    </div>
+                </div>
+                <span class="text-[10px] mt-1 font-bold text-center">2-1-2 Cen</span>
+            </div>
+
+            <!-- 5 Left (1 grande izq + 4 der) -->
+            <div onclick="selectLayout('layout_asim_5_left')" class="layout-btn card p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer shadow-sm" data-id="layout_asim_5_left">
+                <div class="w-7 h-9 wire-sheet flex gap-0.5">
+                    <div class="w-[46%] h-full wire-box-alt"></div>
+                    <div class="w-[54%] h-full grid grid-cols-2 grid-rows-2 gap-[1px]">
+                        <div class="wire-box"></div><div class="wire-box"></div>
+                        <div class="wire-box"></div><div class="wire-box"></div>
+                    </div>
+                </div>
+                <span class="text-[10px] mt-1 font-bold text-center">1 Izq + 4</span>
+            </div>
+        </div>
+
+        <!-- ZONA 3: CONFIGURACIÓN PRINCIPAL -->
+        <h2 class="text-xs font-bold uppercase tracking-wider mb-2 opacity-70">⚙️ Configuración Básica</h2>
+        <div class="card rounded-xl p-4 shadow-sm mb-5 space-y-4">
+
+            <!-- Copias -->
+            <div class="flex justify-between items-center">
+                <span class="font-bold text-base"><i class="fa-regular fa-copy mr-2 text-blue-500"></i>Copias</span>
+                <div class="flex items-center gap-3 rounded-full p-1 border border-gray-300">
+                    <button onclick="cambiarCopias(-1)" class="w-9 h-9 rounded-full card shadow-sm text-lg font-bold active:scale-90">-</button>
+                    <span id="txt-copias" class="text-lg font-extrabold w-6 text-center">1</span>
+                    <button onclick="cambiarCopias(1)" class="w-9 h-9 rounded-full card shadow-sm text-lg font-bold active:scale-90">+</button>
+                </div>
+            </div>
+
+            <!-- Color -->
+            <div class="flex justify-between items-center">
+                <span class="font-bold text-base"><i class="fa-solid fa-droplet mr-2" id="icon-color"></i>Modo de Tinta</span>
+                <div class="flex rounded-xl overflow-hidden border border-gray-300">
+                    <button id="btn-bn" onclick="setColor(false)" class="px-3 py-2 text-xs font-bold bg-gray-800 text-white">⚫ B/N</button>
+                    <button id="btn-color" onclick="setColor(true)" class="px-3 py-2 text-xs font-bold card">🌈 Color</button>
+                </div>
+            </div>
+
+            <!-- Bandeja de Papel -->
+            <div>
+                <div class="flex justify-between items-center mb-1.5">
+                    <span class="font-bold text-sm"><i class="fa-solid fa-tray mr-2 text-indigo-500"></i>Bandeja de Entrada</span>
+                    <span id="badge-bandeja-aviso" class="hidden text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">⚠️ Usar Posterior</span>
+                </div>
+                <div class="grid grid-cols-4 gap-1.5">
+                    <button onclick="selectBandeja('auto')" data-bandeja="auto" class="bandeja-btn card py-2 px-1 rounded-lg text-xs font-bold text-center selected-item">Auto</button>
+                    <button onclick="selectBandeja('cas1')" data-bandeja="cas1" class="bandeja-btn card py-2 px-1 rounded-lg text-xs font-bold text-center">Cas. 1</button>
+                    <button onclick="selectBandeja('cas2')" data-bandeja="cas2" class="bandeja-btn card py-2 px-1 rounded-lg text-xs font-bold text-center">Cas. 2</button>
+                    <button onclick="selectBandeja('rear')" data-bandeja="rear" class="bandeja-btn card py-2 px-1 rounded-lg text-xs font-bold text-center">Posterior</button>
+                </div>
+            </div>
+
+            <!-- Rango de Páginas -->
+            <div>
+                <label class="font-bold text-sm mb-1 block"><i class="fa-solid fa-scissors mr-2 text-emerald-600"></i>Páginas específicas (PDF)</label>
+                <div class="relative">
+                    <input type="text" id="input-rango" placeholder="Todas (Ej: 1-5, 8, 12)" class="input-clean w-full rounded-xl p-3 pr-10 text-base focus:ring-2 focus:ring-blue-500 outline-none">
+                    <button onclick="document.getElementById('input-rango').value=''" class="absolute right-3 top-3 text-gray-400 hover:text-gray-600">
+                        <i class="fa-solid fa-circle-xmark text-lg"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ZONA 4: AJUSTES AVANZADOS (ACORDEÓN) -->
+        <details class="card rounded-xl shadow-sm mb-6 group">
+            <summary class="p-4 font-bold text-sm cursor-pointer list-none flex justify-between items-center">
+                <span><i class="fa-solid fa-sliders mr-2 text-blue-500"></i>Ajustes Avanzados (Papel, Doble Cara, Bordes)</span>
+                <i class="fa-solid fa-chevron-down transition-transform group-open:rotate-180"></i>
+            </summary>
+            <div class="p-4 border-t border-gray-200 space-y-4">
+
+                <div class="flex justify-between items-center">
+                    <span class="text-sm font-semibold">Tamaño de Papel</span>
+                    <select id="sel-papel" class="input-clean rounded-lg p-2 text-sm font-bold outline-none">
+                        <option value="carta">Carta</option>
+                        <option value="oficio">Oficio (Legal)</option>
+                    </select>
+                </div>
+
+                <div class="flex justify-between items-center">
+                    <span class="text-sm font-semibold">Tipo de Papel</span>
+                    <select id="sel-tipo" class="input-clean rounded-lg p-2 text-sm font-bold outline-none">
+                        <option value="normal">Normal (Bond)</option>
+                        <option value="fotografico">Fotográfico (Glossy)</option>
+                    </select>
+                </div>
+
+                <div class="flex justify-between items-center">
+                    <span class="text-sm font-semibold">Orientación de Hoja</span>
+                    <select id="sel-orientacion" class="input-clean rounded-lg p-2 text-sm font-bold outline-none">
+                        <option value="vertical">Vertical</option>
+                        <option value="horizontal">Horizontal</option>
+                    </select>
+                </div>
+
+                <div class="flex justify-between items-center">
+                    <span class="text-sm font-semibold">Rotar Fotos Antes</span>
+                    <select id="sel-rotacion" class="input-clean rounded-lg p-2 text-sm font-bold outline-none">
+                        <option value="ninguna">Automática</option>
+                        <option value="vertical">Forzar Vertical</option>
+                        <option value="horizontal">Forzar Horizontal</option>
+                    </select>
+                </div>
+
+                <div class="flex justify-between items-center">
+                    <span class="text-sm font-semibold">Escala / Tamaño</span>
+                    <select id="sel-escala" class="input-clean rounded-lg p-2 text-sm font-bold outline-none">
+                        <option value="50">50% (Mitad)</option>
+                        <option value="75">75%</option>
+                        <option value="100" selected>100% (Normal)</option>
+                        <option value="150">150% (Ampliada)</option>
+                        <option value="200">200% (Doble)</option>
+                    </select>
+                </div>
+
+                <div class="flex justify-between items-center">
+                    <span class="text-sm font-semibold">Doble Cara (Ambos lados)</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="check-doble" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-300 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+
+                <div class="flex justify-between items-center">
+                    <span class="text-sm font-semibold">Modo Escáner (Quitar fondo gris)</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="check-escaner" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-300 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gray-800"></div>
+                    </label>
+                </div>
+
+                <div class="flex justify-between items-center">
+                    <span class="text-sm font-semibold">Sin Bordes (Recortar al ras)</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="check-sin-bordes" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-300 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-pink-600"></div>
+                    </label>
+                </div>
+
+            </div>
+        </details>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- PESTAÑA 2: REPORTES FINANCIEROS Y CORTE DE CAJA                       -->
+    <!-- ===================================================================== -->
+    <div id="vista-reportes" class="hidden space-y-3">
+        <div class="card rounded-xl p-4 shadow-sm mb-2">
+            <h2 class="text-base font-extrabold mb-1"><i class="fa-solid fa-cash-register mr-2 text-emerald-600"></i>Corte de Caja y Reportes</h2>
+            <p class="text-xs opacity-70">Selecciona un periodo para recibir el resumen de ganancias y el archivo Excel directamente en el chat.</p>
+        </div>
+
+        <button onclick="pedirReporte('hoy')" class="w-full card p-4 rounded-xl flex items-center justify-between shadow-sm active:scale-98 transition-transform">
+            <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-calendar-day"></i>
+                </div>
+                <div class="text-left">
+                    <p class="font-extrabold text-base">Corte de Hoy</p>
+                    <p class="text-xs opacity-65">Ventas, hojas y ganancia del día</p>
+                </div>
+            </div>
+            <i class="fa-solid fa-chevron-right opacity-50"></i>
+        </button>
+
+        <button onclick="pedirReporte('semana')" class="w-full card p-4 rounded-xl flex items-center justify-between shadow-sm active:scale-98 transition-transform">
+            <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-calendar-week"></i>
+                </div>
+                <div class="text-left">
+                    <p class="font-extrabold text-base">Esta Semana</p>
+                    <p class="text-xs opacity-65">Acumulado de lunes a hoy</p>
+                </div>
+            </div>
+            <i class="fa-solid fa-chevron-right opacity-50"></i>
+        </button>
+
+        <button onclick="pedirReporte('mes')" class="w-full card p-4 rounded-xl flex items-center justify-between shadow-sm active:scale-98 transition-transform">
+            <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-calendar-days"></i>
+                </div>
+                <div class="text-left">
+                    <p class="font-extrabold text-base">Este Mes</p>
+                    <p class="text-xs opacity-65">Balance mensual completo</p>
+                </div>
+            </div>
+            <i class="fa-solid fa-chevron-right opacity-50"></i>
+        </button>
+
+        <button onclick="pedirReporte('total')" class="w-full card p-4 rounded-xl flex items-center justify-between shadow-sm active:scale-98 transition-transform">
+            <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-database"></i>
+                </div>
+                <div class="text-left">
+                    <p class="font-extrabold text-base">Histórico Completo</p>
+                    <p class="text-xs opacity-65">Todas las órdenes registradas</p>
+                </div>
+            </div>
+            <i class="fa-solid fa-chevron-right opacity-50"></i>
+        </button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        function vibrar() {
+            if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+        }
+
+        function estadoInicial() {
+            return {
+                copias: 1,
+                color: false,
+                layout_id: 'layout_1',
+                rango: '',
+                bandeja: 'auto',
+                tamano_papel: 'carta',
+                tipo_papel: 'normal',
+                orientacion: 'vertical',
+                forzar_rotacion: 'ninguna',
+                escala_porcentaje: 100,
+                doble_cara: false,
+                sin_bordes: false,
+                modo_escaner: false,
+                modo_ine: false,
+                modo_tetris: false,
+                modo_todo_en_uno: false,
+                ancho_cm: 5.0,
+                alto_cm: 5.0,
+                repeticiones: 0
+            };
+        }
+
+        let config = estadoInicial();
+        let presetActivo = null;
+
+        function cambiarTab(tab) {
+            vibrar();
+            const esImprimir = (tab === 'imprimir');
+            document.getElementById('vista-imprimir').classList.toggle('hidden', !esImprimir);
+            document.getElementById('vista-reportes').classList.toggle('hidden', esImprimir);
+            document.getElementById('btn-reset').classList.toggle('hidden', !esImprimir);
+
+            document.getElementById('tab-btn-imprimir').classList.toggle('tab-active', esImprimir);
+            document.getElementById('tab-btn-reportes').classList.toggle('tab-active', !esImprimir);
+
+            if (esImprimir) {
+                tg.MainButton.show();
+            } else {
+                tg.MainButton.hide();
+            }
+        }
+
+        function updateUI() {
+            // Copias
+            document.getElementById('txt-copias').innerText = config.copias;
+
+            // Color
+            const btnBn = document.getElementById('btn-bn');
+            const btnColor = document.getElementById('btn-color');
+            document.getElementById('icon-color').style.color = config.color ? '#ec4899' : '#6b7280';
+            if (config.color) {
+                btnColor.className = "px-3 py-2 text-xs font-bold bg-pink-600 text-white";
+                btnBn.className = "px-3 py-2 text-xs font-bold card";
+            } else {
+                btnBn.className = "px-3 py-2 text-xs font-bold bg-gray-800 text-white";
+                btnColor.className = "px-3 py-2 text-xs font-bold card";
+            }
+
+            // Presets activos
+            document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('selected-item'));
+            if (presetActivo) {
+                const pBtn = document.getElementById(`preset-${presetActivo}`);
+                if (pBtn) pBtn.classList.add('selected-item');
+            }
+
+            // Layouts activos
+            document.querySelectorAll('.layout-btn').forEach(btn => btn.classList.remove('selected-item'));
+            if (config.layout_id) {
+                const activeBtn = document.querySelector(`[data-id="${config.layout_id}"]`);
+                if (activeBtn) activeBtn.classList.add('selected-item');
+            }
+
+            // Panel contextual de Planillas
+            const esPlanilla = ['planilla_infantil', 'planilla_pasaporte', 'planilla_custom'].includes(config.layout_id);
+            document.getElementById('panel-planilla').classList.toggle('hidden', !esPlanilla);
+            document.getElementById('inputs-custom-cm').classList.toggle('hidden', config.layout_id !== 'planilla_custom');
+            document.getElementById('txt-repeticiones').innerText = config.repeticiones === 0 ? 'Auto' : config.repeticiones;
+            document.getElementById('btn-rep-llenar').className = config.repeticiones === 0
+                ? "px-2.5 py-1.5 rounded-lg text-xs font-bold border border-blue-500 bg-blue-500 text-white"
+                : "px-2.5 py-1.5 rounded-lg text-xs font-bold card";
+
+            // Bandeja
+            document.querySelectorAll('.bandeja-btn').forEach(btn => btn.classList.remove('selected-item'));
+            const bBtn = document.querySelector(`[data-bandeja="${config.bandeja}"]`);
+            if (bBtn) bBtn.classList.add('selected-item');
+
+            // Aviso papel especial
+            const requierePosterior = (config.tamano_papel === 'oficio' || config.tipo_papel === 'fotografico');
+            document.getElementById('badge-bandeja-aviso').classList.toggle('hidden', !requierePosterior);
+
+            // Avanzados
+            document.getElementById('sel-papel').value = config.tamano_papel;
+            document.getElementById('sel-tipo').value = config.tipo_papel;
+            document.getElementById('sel-orientacion').value = config.orientacion;
+            document.getElementById('sel-rotacion').value = config.forzar_rotacion;
+            document.getElementById('sel-escala').value = String(config.escala_porcentaje);
+            document.getElementById('check-doble').checked = config.doble_cara;
+            document.getElementById('check-escaner').checked = config.modo_escaner;
+            document.getElementById('check-sin-bordes').checked = config.sin_bordes;
+        }
+
+        function reiniciarConfig() {
+            vibrar();
+            config = estadoInicial();
+            presetActivo = null;
+            document.getElementById('input-rango').value = '';
+            updateUI();
+        }
+
+        function cambiarCopias(delta) {
+            vibrar();
+            config.copias = Math.max(1, config.copias + delta);
+            updateUI();
+        }
+
+        function setColor(val) {
+            vibrar();
+            config.color = val;
+            updateUI();
+        }
+
+        function selectBandeja(b) {
+            vibrar();
+            config.bandeja = b;
+            updateUI();
+        }
+
+        function setRepeticiones(val) {
+            vibrar();
+            config.repeticiones = val;
+            updateUI();
+        }
+
+        function cambiarRepeticiones(delta) {
+            vibrar();
+            if (config.repeticiones === 0 && delta > 0) {
+                config.repeticiones = 1;
+            } else {
+                config.repeticiones = Math.max(0, config.repeticiones + delta);
+            }
+            updateUI();
+        }
+
+        function selectLayout(id) {
+            vibrar();
+            presetActivo = null;
+            config.layout_id = id;
+            config.modo_tetris = false;
+            config.modo_todo_en_uno = false;
+            config.modo_ine = false;
+            updateUI();
+        }
+
+        function aplicarPreset(tipo) {
+            vibrar();
+            config = estadoInicial();
+            presetActivo = tipo;
+
+            if (tipo === 'ine') {
+                config.modo_ine = true;
+                config.layout_id = 'modo_especial';
+            } else if (tipo === 'escaner') {
+                config.modo_escaner = true;
+                config.layout_id = 'layout_1';
+            } else if (tipo === 'color') {
+                config.color = true;
+                config.layout_id = 'layout_1';
+            } else if (tipo === 'tetris') {
+                config.modo_tetris = true;
+                config.color = true;
+                config.layout_id = 'modo_especial';
+            } else if (tipo === 'todo_en_uno') {
+                config.modo_todo_en_uno = true;
+                config.color = true;
+                config.layout_id = 'modo_especial';
+            } else if (tipo === 'foto') {
+                config.tipo_papel = 'fotografico';
+                config.color = true;
+                config.sin_bordes = true;
+                config.bandeja = 'rear';
+                config.layout_id = 'layout_1';
+            }
+            updateUI();
+        }
+
+        // Sincronizar controles avanzados
+        document.getElementById('sel-papel').addEventListener('change', (e) => {
+            config.tamano_papel = e.target.value;
+            if (config.tamano_papel === 'oficio') config.bandeja = 'rear';
+            updateUI();
+        });
+        document.getElementById('sel-tipo').addEventListener('change', (e) => {
+            config.tipo_papel = e.target.value;
+            if (config.tipo_papel === 'fotografico') config.bandeja = 'rear';
+            updateUI();
+        });
+        document.getElementById('sel-orientacion').addEventListener('change', (e) => { config.orientacion = e.target.value; });
+        document.getElementById('sel-rotacion').addEventListener('change', (e) => { config.forzar_rotacion = e.target.value; });
+        document.getElementById('sel-escala').addEventListener('change', (e) => { config.escala_porcentaje = parseInt(e.target.value, 10); });
+        document.getElementById('check-doble').addEventListener('change', (e) => { config.doble_cara = e.target.checked; });
+        document.getElementById('check-escaner').addEventListener('change', (e) => { config.modo_escaner = e.target.checked; });
+        document.getElementById('check-sin-bordes').addEventListener('change', (e) => { config.sin_bordes = e.target.checked; });
+
+        // Enviar solicitud de reporte financiero
+        function pedirReporte(periodo) {
+            vibrar();
+            tg.sendData(JSON.stringify({
+                accion: 'reporte',
+                periodo: periodo
+            }));
+        }
+
+        // Botón principal nativo de Telegram
+        tg.MainButton.text = "💰 COTIZAR Y VER VISTA PREVIA";
+        tg.MainButton.color = "#10b981";
+        tg.MainButton.textColor = "#ffffff";
+        tg.MainButton.show();
+
+        tg.MainButton.onClick(() => {
+            config.rango = document.getElementById('input-rango').value.trim();
+            if (config.layout_id === 'planilla_custom') {
+                config.ancho_cm = parseFloat(document.getElementById('input-ancho-cm').value) || 5.0;
+                config.alto_cm = parseFloat(document.getElementById('input-alto-cm').value) || 5.0;
+            }
+            tg.sendData(JSON.stringify(config));
+        });
+
+        updateUI();
+    </script>
+</body>
+</html>

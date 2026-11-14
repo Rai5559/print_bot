@@ -2,254 +2,478 @@ import os
 import uuid
 import shutil
 import time
-from datetime import datetime, timedelta, time as dt_time
-import pytz
-import asyncio
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-import ollama
-from PIL import Image
-from dotenv import load_dotenv
 import math
-import pymupdf as fitz
-from PIL import Image, ImageChops, ImageStat, ImageOps, ImageEnhance
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import CallbackQueryHandler
-import aiohttp
 import json
-from docx2pdf import convert as convert_docx
-import numpy as np
 import re
 import csv
-import pandas as pd
 import base64
+import asyncio
+from datetime import datetime, timedelta, time as dt_time
 from io import BytesIO
+
+import pytz
+from dotenv import load_dotenv
+import aiohttp
+import numpy as np
+import pandas as pd
+import cv2
+import pymupdf as fitz
+from PIL import Image, ImageChops, ImageStat, ImageOps, ImageEnhance
+from docx2pdf import convert as convert_docx
 from playwright.async_api import async_playwright
 import rectpack
-import cv2
+
+from telegram import Update, WebAppInfo, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    filters,
+    ContextTypes,
+    CallbackQueryHandler,
+)
 
 # ================= CONFIGURACIÓN =================
 load_dotenv()
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT")
 BASE_DIR = "archivos_impresion"
+URL_TIENDA = os.getenv("URL_TIENDA")
 
 ids_str = os.getenv("USUARIOS_AUTORIZADOS", "")
 USUARIOS_AUTORIZADOS = [int(i.strip()) for i in ids_str.split(",") if i.strip()]
 
-# Memoria temporal para agrupar archivos antes de la instrucción de texto
-# Estructura: {chat_id: {"archivos": [ruta1, ruta2]}}
+# 🔴 CAMBIA ESTA URL POR LA URL DONDE ALOJES TU WEBAPP.HTML 🔴
+WEBAPP_URL = os.getenv("WEBAPP_URL")
+
+# Memoria temporal para agrupar archivos antes de abrir la WebApp
+# Estructura: {chat_id: {"archivos_temporales": [ruta1, ruta2]}}
 sesiones_activas = {}
 
-# ================= FUNCIONES CORE =================
+# Pixel transparente 1x1 por si se elige un layout de 3 o 5 fotos con menos imágenes
+PIXEL_TRANSPARENTE = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+
+# ================= PLANTILLAS ASIMÉTRICAS (3 Y 5 IMÁGENES) =================
+PLANTILLAS_HTML = {
+    # --- COMBINACIONES PARA 3 IMÁGENES ---
+    "layout_asim_1_2": {  # Alias compatible con tu HTML actual (1 arriba + 2 abajo)
+        "imagenes_por_hoja": 3,
+        "html": """
+        <div style='display:flex; flex-direction:column; width:100vw; height:100vh; padding:12px; box-sizing:border-box; gap:12px;'>
+            <div style='height:50%; width:100%;'><img src='{img_0}' style='width:100%; height:100%; object-fit:contain;'></div>
+            <div style='height:50%; width:100%; display:flex; gap:12px;'>
+                <img src='{img_1}' style='width:50%; height:100%; object-fit:contain;'>
+                <img src='{img_2}' style='width:50%; height:100%; object-fit:contain;'>
+            </div>
+        </div>
+        """
+    },
+    "layout_asim_3_top": {  # 1 grande arriba + 2 abajo
+        "imagenes_por_hoja": 3,
+        "html": """
+        <div style='display:flex; flex-direction:column; width:100vw; height:100vh; padding:12px; box-sizing:border-box; gap:12px;'>
+            <div style='height:52%; width:100%;'><img src='{img_0}' style='width:100%; height:100%; object-fit:contain;'></div>
+            <div style='height:48%; width:100%; display:flex; gap:12px;'>
+                <img src='{img_1}' style='width:50%; height:100%; object-fit:contain;'>
+                <img src='{img_2}' style='width:50%; height:100%; object-fit:contain;'>
+            </div>
+        </div>
+        """
+    },
+    "layout_asim_3_bottom": {  # 2 arriba + 1 grande abajo
+        "imagenes_por_hoja": 3,
+        "html": """
+        <div style='display:flex; flex-direction:column; width:100vw; height:100vh; padding:12px; box-sizing:border-box; gap:12px;'>
+            <div style='height:48%; width:100%; display:flex; gap:12px;'>
+                <img src='{img_0}' style='width:50%; height:100%; object-fit:contain;'>
+                <img src='{img_1}' style='width:50%; height:100%; object-fit:contain;'>
+            </div>
+            <div style='height:52%; width:100%;'><img src='{img_2}' style='width:100%; height:100%; object-fit:contain;'></div>
+        </div>
+        """
+    },
+    "layout_asim_3_left": {  # 1 grande izquierda + 2 apiladas derecha
+        "imagenes_por_hoja": 3,
+        "html": """
+        <div style='display:flex; flex-direction:row; width:100vw; height:100vh; padding:12px; box-sizing:border-box; gap:12px;'>
+            <div style='width:52%; height:100%;'><img src='{img_0}' style='width:100%; height:100%; object-fit:contain;'></div>
+            <div style='width:48%; height:100%; display:flex; flex-direction:column; gap:12px;'>
+                <img src='{img_1}' style='width:100%; height:50%; object-fit:contain;'>
+                <img src='{img_2}' style='width:100%; height:50%; object-fit:contain;'>
+            </div>
+        </div>
+        """
+    },
+    "layout_asim_3_right": {  # 2 apiladas izquierda + 1 grande derecha
+        "imagenes_por_hoja": 3,
+        "html": """
+        <div style='display:flex; flex-direction:row; width:100vw; height:100vh; padding:12px; box-sizing:border-box; gap:12px;'>
+            <div style='width:48%; height:100%; display:flex; flex-direction:column; gap:12px;'>
+                <img src='{img_0}' style='width:100%; height:50%; object-fit:contain;'>
+                <img src='{img_1}' style='width:100%; height:50%; object-fit:contain;'>
+            </div>
+            <div style='width:52%; height:100%;'><img src='{img_2}' style='width:100%; height:100%; object-fit:contain;'></div>
+        </div>
+        """
+    },
+
+    # --- COMBINACIONES PARA 5 IMÁGENES ---
+    "layout_asim_5_top": {  # 1 grande arriba + 4 en cuadrícula 2x2 abajo
+        "imagenes_por_hoja": 5,
+        "html": """
+        <div style='display:flex; flex-direction:column; width:100vw; height:100vh; padding:12px; box-sizing:border-box; gap:10px;'>
+            <div style='height:44%; width:100%;'><img src='{img_0}' style='width:100%; height:100%; object-fit:contain;'></div>
+            <div style='height:56%; width:100%; display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:10px;'>
+                <img src='{img_1}' style='width:100%; height:100%; object-fit:contain;'>
+                <img src='{img_2}' style='width:100%; height:100%; object-fit:contain;'>
+                <img src='{img_3}' style='width:100%; height:100%; object-fit:contain;'>
+                <img src='{img_4}' style='width:100%; height:100%; object-fit:contain;'>
+            </div>
+        </div>
+        """
+    },
+    "layout_asim_5_bottom": {  # 4 en cuadrícula 2x2 arriba + 1 grande abajo
+        "imagenes_por_hoja": 5,
+        "html": """
+        <div style='display:flex; flex-direction:column; width:100vw; height:100vh; padding:12px; box-sizing:border-box; gap:10px;'>
+            <div style='height:56%; width:100%; display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:10px;'>
+                <img src='{img_0}' style='width:100%; height:100%; object-fit:contain;'>
+                <img src='{img_1}' style='width:100%; height:100%; object-fit:contain;'>
+                <img src='{img_2}' style='width:100%; height:100%; object-fit:contain;'>
+                <img src='{img_3}' style='width:100%; height:100%; object-fit:contain;'>
+            </div>
+            <div style='height:44%; width:100%;'><img src='{img_4}' style='width:100%; height:100%; object-fit:contain;'></div>
+        </div>
+        """
+    },
+    "layout_asim_5_center": {  # 2 arriba + 1 grande panorámica al centro + 2 abajo
+        "imagenes_por_hoja": 5,
+        "html": """
+        <div style='display:flex; flex-direction:column; width:100vw; height:100vh; padding:12px; box-sizing:border-box; gap:10px;'>
+            <div style='height:30%; width:100%; display:flex; gap:10px;'>
+                <img src='{img_0}' style='width:50%; height:100%; object-fit:contain;'>
+                <img src='{img_1}' style='width:50%; height:100%; object-fit:contain;'>
+            </div>
+            <div style='height:40%; width:100%;'><img src='{img_2}' style='width:100%; height:100%; object-fit:contain;'></div>
+            <div style='height:30%; width:100%; display:flex; gap:10px;'>
+                <img src='{img_3}' style='width:50%; height:100%; object-fit:contain;'>
+                <img src='{img_4}' style='width:50%; height:100%; object-fit:contain;'>
+            </div>
+        </div>
+        """
+    },
+    "layout_asim_5_left": {  # 1 grande izquierda + 4 en cuadrícula 2x2 derecha
+        "imagenes_por_hoja": 5,
+        "html": """
+        <div style='display:flex; flex-direction:row; width:100vw; height:100vh; padding:12px; box-sizing:border-box; gap:10px;'>
+            <div style='width:46%; height:100%;'><img src='{img_0}' style='width:100%; height:100%; object-fit:contain;'></div>
+            <div style='width:54%; height:100%; display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:10px;'>
+                <img src='{img_1}' style='width:100%; height:100%; object-fit:contain;'>
+                <img src='{img_2}' style='width:100%; height:100%; object-fit:contain;'>
+                <img src='{img_3}' style='width:100%; height:100%; object-fit:contain;'>
+                <img src='{img_4}' style='width:100%; height:100%; object-fit:contain;'>
+            </div>
+        </div>
+        """
+    },
+}
+
+# ================= FUNCIONES CORE Y CÁLCULO DE COSTOS =================
 
 def crear_carpetas_orden(chat_id):
     """Crea la estructura de carpetas: fecha / uuid / originales | procesados"""
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
-    orden_id = str(uuid.uuid4())[:8] # UUID corto
-    
+    orden_id = str(uuid.uuid4())[:8]
     ruta_originales = os.path.join(BASE_DIR, fecha_hoy, orden_id, "originales")
     ruta_procesados = os.path.join(BASE_DIR, fecha_hoy, orden_id, "procesados")
-    
     os.makedirs(ruta_originales, exist_ok=True)
     os.makedirs(ruta_procesados, exist_ok=True)
-    
     return orden_id, ruta_originales, ruta_procesados
 
-async def extraer_instrucciones_llm(texto_usuario, num_archivos):
-    prompt_sistema = f"""
-    Eres el cerebro de un centro de copiado. Convierte la solicitud a un JSON estricto.
-    
-    CONTEXTO VITAL: El usuario adjuntó {num_archivos} archivos/imágenes.
-    
-    CARRIL 1: DISEÑOS ASIMÉTRICOS Y LIBRES (HTML)
-    - 'modo_html': true si piden posiciones ("arriba", "abajo"), diseños libres o auto-ajuste fluido.
-    - 'codigo_html': Escribe el HTML/CSS. Usa {{img_0}}, {{img_1}} como src.
-    
-    CARRIL 2: MODO PLANILLA EXACTA
-    - 'modo_planilla': true SOLO si piden medidas exactas (ej "5x5") o "infantil". 
-    
-    CARRIL 3: CUADRÍCULAS BÁSICAS
-    - 'layout_n_up': Número de imágenes por hoja (ej "3 por página").
-    
-    CARRIL 4: MODO TETRIS / MÁXIMA EFICIENCIA
-    - 'modo_tetris': true si piden "aprovechando el espacio", "como quepan" o "sin desperdiciar". 
-    
-    CARRIL 5: MODO ESCÁNER (AHORRO DE TINTA)
-    - 'modo_escaner': true si el cliente pide "aclarar fondo", "modo documento", "modo escáner", "limpiar foto" o "quitar sombras".
-    
-    VALORES POR DEFECTO:
-    {{
-      "copias": 1,
-      "layout_n_up": 1,
-      "color": false,
-      "doble_cara": false,
-      "tamano_papel": "carta",
-      "tipo_papel": "normal",
-      "orientacion": "vertical",
-      "sin_bordes": false,
-      "tipo_documento": "normal",
-      "escala_porcentaje": 100,
-      "modo_planilla": false,
-      "dimensiones_cm": null,
-      "repeticiones": 1,
-      "rango_paginas": "todos",
-      "modo_html": false,
-      "codigo_html": "",
-      "forzar_rotacion": "ninguna",
-      "modo_tetris": false,
-      "modo_escaner": false
-    }}
-    """
-    
-    response = ollama.chat(
-        model='llama3.1:8b',
-        messages=[
-            {'role': 'system', 'content': prompt_sistema},
-            {'role': 'user', 'content': texto_usuario}
-        ],
-        format='json'
-    )
-    return json.loads(response['message']['content'])
 
 def crear_lienzo(tamano="carta", orientacion="vertical"):
-    """Genera el lienzo y lo acuesta si el usuario pide horizontal."""
-    ancho, alto = 2550, 3300 # Carta
+    """Genera el lienzo a 300 DPI según tamaño y orientación."""
+    ancho, alto = 2550, 3300  # Carta
     if tamano.lower() == "oficio":
         ancho, alto = 2550, 4200
-        
     if orientacion.lower() == "horizontal":
-        ancho, alto = alto, ancho # Invierte las dimensiones
-        
+        ancho, alto = alto, ancho
     return Image.new("RGB", (ancho, alto), "white")
 
+
 def optimizar_orientacion(img, ancho_celda, alto_celda):
-    """Rota la imagen 90 grados automáticamente si eso permite aprovechar más papel."""
-    ratio_celda = ancho_celda / alto_celda
-    ratio_img = img.width / img.height
-    
-    celda_es_horizontal = ratio_celda > 1
-    img_es_horizontal = ratio_img > 1
-    
-    if celda_es_horizontal != img_es_horizontal:
+    """Rota la imagen 90 grados automáticamente si aprovecha mejor la celda."""
+    if (ancho_celda / alto_celda > 1) != (img.width / img.height > 1):
         return img.rotate(90, expand=True)
     return img
 
+
 def analizar_rango(rango_val, total_paginas):
-    """Convierte casi cualquier locura que devuelva el LLM o el usuario en índices válidos."""
-    if not rango_val or str(rango_val).lower() in ["todos", "todas", "todo", "null", "none", "[]", ""]:
+    """Convierte cadenas como '1-5, 8, 12-15' en índices base 0 válidos."""
+    if not rango_val or str(rango_val).lower().strip() in ["todos", "todas", "todo", "null", "none", "[]", ""]:
         return None
-    
     paginas_a_imprimir = set()
-    
-    # 1. Si el LLM devolvió una lista por error (ej. ["13-23", "45-50"])
-    if isinstance(rango_val, list):
-        rango_str = ",".join(str(x) for x in rango_val)
-    else:
-        rango_str = str(rango_val)
-        
-    # 2. Limpieza hardcore de lenguaje humano
+    rango_str = ",".join(str(x) for x in rango_val) if isinstance(rango_val, list) else str(rango_val)
     rango_limpio = rango_str.lower().replace(" y ", ",").replace(" e ", ",").replace("&", ",")
     rango_limpio = rango_limpio.replace(" al ", "-").replace(" a ", "-")
-    
-    # 3. Expresión regular: Destruir TODO lo que no sea un número, una coma o un guión
     rango_limpio = re.sub(r'[^\d,\-]', '', rango_limpio)
-    
-    partes = rango_limpio.split(",")
-    for parte in partes:
+
+    for parte in rango_limpio.split(","):
         if "-" in parte:
             try:
-                # Extraer los números, ignorando guiones vacíos
                 nums = [int(n) for n in parte.split("-") if n]
                 if len(nums) >= 2:
-                    # Ordenar por si el LLM pone "23-13" por error
                     inicio, fin = min(nums[0], nums[1]), max(nums[0], nums[1])
-                    for p in range(inicio-1, fin):
+                    for p in range(inicio - 1, fin):
                         if 0 <= p < total_paginas:
                             paginas_a_imprimir.add(p)
-            except: pass
+            except Exception:
+                pass
         elif parte:
             try:
                 p = int(parte) - 1
                 if 0 <= p < total_paginas:
                     paginas_a_imprimir.add(p)
-            except: pass
-            
-    return list(paginas_a_imprimir) if paginas_a_imprimir else None
+            except Exception:
+                pass
+
+    return sorted(list(paginas_a_imprimir)) if paginas_a_imprimir else None
+
 
 def guardar_registro_csv(orden_id, config, costos):
-    """Guarda silenciosamente la orden en una base de datos local CSV."""
+    """Guarda silenciosamente la orden confirmada en la base de datos local CSV."""
     archivo_csv = "registro_impresiones.csv"
     existe = os.path.isfile(archivo_csv)
-    
     with open(archivo_csv, mode='a', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         if not existe:
-            # Crear cabeceras si el archivo es nuevo
-            writer.writerow(["Fecha", "Hora", "Orden_ID", "Tamano", "Tipo_Papel", 
-                             "Copias", "Hojas_Fisicas", "Pags_BN", "Pags_Color", "Pags_Foto",
-                             "Costo_Total", "Venta_Total", "Ganancia"])
-        
-        fecha = datetime.now().strftime("%Y-%m-%d")
-        hora = datetime.now().strftime("%H:%M:%S")
-        
+            writer.writerow([
+                "Fecha", "Hora", "Orden_ID", "Tamano", "Tipo_Papel",
+                "Copias", "Hojas_Fisicas", "Pags_BN", "Pags_Color", "Pags_Foto",
+                "Costo_Total", "Venta_Total", "Ganancia"
+            ])
         writer.writerow([
-            fecha, hora, orden_id, 
-            config.get("tamano_papel", "carta").upper(), 
+            datetime.now().strftime("%Y-%m-%d"),
+            datetime.now().strftime("%H:%M:%S"),
+            orden_id,
+            config.get("tamano_papel", "carta").upper(),
             config.get("tipo_papel", "normal").upper(),
-            config.get("copias", 1), 
+            config.get("copias", 1),
             costos["hojas_fisicas_a_usar"],
-            costos["resumen_tipos"]["texto_bn"], 
-            costos["resumen_tipos"]["texto_color"], 
+            costos["resumen_tipos"]["texto_bn"],
+            costos["resumen_tipos"]["texto_color"],
             costos["resumen_tipos"]["imagen_full"],
-            costos["costo_interno_mxn"], 
-            costos["precio_venta_sugerido"], 
+            costos["costo_interno_mxn"],
+            costos["precio_venta_sugerido"],
             costos["ganancia_estimada"]
         ])
 
+
 def mejorar_contraste_ine(img):
-    """Mejora automática para credenciales: Mantiene el color pero limpia fondos grises."""
+    """Mejora automática para credenciales: mantiene color pero limpia fondos grises."""
     img = img.convert("RGB")
-    # Autocontraste: hace los blancos más blancos y los negros más negros
     img = ImageOps.autocontrast(img, cutoff=1)
-    # Subir el brillo un 20% para fulminar el fondo grisáceo clásico de los celulares
-    enhancer = ImageEnhance.Brightness(img)
-    img = enhancer.enhance(1.2)
-    return img
+    return ImageEnhance.Brightness(img).enhance(1.2)
+
 
 def limpiar_documento_opencv(img):
     """Convierte fotos oscuras con sombras en documentos escaneados puros (B/N)."""
-    # 1. Convertir imagen de Pillow a matriz matemática de OpenCV
     img_cv = cv2.cvtColor(np.array(img.convert("RGB")), cv2.COLOR_RGB2BGR)
-    
-    # 2. Pasar a escala de grises
     gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-    
-    # 3. UMBRAL ADAPTATIVO (Magia contra las sombras de manos y celulares)
-    # En lugar de un filtro global, analiza regiones de 21x21 píxeles. 
-    # Borra las sombras de gradiente pero mantiene la tinta negra intacta.
     thresh = cv2.adaptiveThreshold(
-        gray, 255, 
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-        cv2.THRESH_BINARY, 
+        gray, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
         21, 15
     )
-    
-    # Convertir de regreso al formato Pillow
     return Image.fromarray(thresh).convert("RGB")
+
+
+def analizar_cobertura_pagina(page):
+    """Calcula el % exacto de tinta a color y B/N mediante NumPy."""
+    pix = page.get_pixmap(matrix=fitz.Matrix(1, 1), colorspace=fitz.csRGB)
+    img_array = np.array(Image.frombytes("RGB", [pix.width, pix.height], pix.samples))
+    mascara_blanca = np.all(img_array > 240, axis=-1)
+    diferencia = np.max(img_array, axis=-1).astype(int) - np.min(img_array, axis=-1).astype(int)
+    total_pixeles = img_array.shape[0] * img_array.shape[1]
+    cobertura_color = np.sum((diferencia > 15) & (~mascara_blanca)) / total_pixeles
+    cobertura_bn = np.sum((diferencia <= 15) & (~mascara_blanca)) / total_pixeles
+    return cobertura_color, cobertura_bn
+
+
+def calcular_costo_gx7110(pdf_path, config_json):
+    """Calcula precios dinámicos basándose en el consumo exacto de tinta."""
+    doc = fitz.open(pdf_path)
+    num_paginas = len(doc)
+    copias = config_json.get("copias", 1)
+    doble_cara = config_json.get("doble_cara", False)
+    es_fotografico = config_json.get("tipo_papel") == "fotografico"
+    forzar_bn = not config_json.get("color", False)
+
+    costo_tinta_total = 0.0
+    precio_venta_total = 0.0
+    resumen = {"texto_bn": 0, "texto_color": 0, "imagen_full": 0}
+
+    costo_100pct_color = 1.50 if es_fotografico else 1.00
+    costo_100pct_bn = 0.60
+
+    for i in range(num_paginas):
+        cob_color, cob_bn = analizar_cobertura_pagina(doc[i])
+        if forzar_bn:
+            cob_bn += cob_color
+            cob_color = 0.0
+
+        costo_tinta_total += (cob_color * costo_100pct_color) + (cob_bn * costo_100pct_bn)
+
+        if es_fotografico:
+            precio_pag = 15.00
+            resumen["imagen_full"] += 1
+        elif cob_color > 0.15:
+            precio_pag = 6.00
+            resumen["imagen_full"] += 1
+        elif cob_color > 0.01:
+            precio_pag = 3.00
+            resumen["texto_color"] += 1
+        else:
+            precio_pag = 1.50
+            resumen["texto_bn"] += 1
+
+        precio_venta_total += precio_pag
+
+    doc.close()
+
+    hojas_por_copia = math.ceil(num_paginas / 2) if doble_cara else num_paginas
+    total_hojas = hojas_por_copia * copias
+    costo_hoja = 3.00 if es_fotografico else 0.30
+    costo_interno = (total_hojas * costo_hoja) + (costo_tinta_total * copias)
+    precio_venta = precio_venta_total * copias
+
+    return {
+        "paginas_totales": num_paginas * copias,
+        "resumen_tipos": {k: v * copias for k, v in resumen.items()},
+        "hojas_fisicas_a_usar": total_hojas,
+        "costo_interno_mxn": round(costo_interno, 2),
+        "precio_venta_sugerido": round(precio_venta, 2),
+        "ganancia_estimada": round(precio_venta - costo_interno, 2)
+    }
+
+
+# ================= ENRUTADOR WEBAPP A CONFIGURACIÓN EXACTA =================
+
+def normalizar_bandeja(valor_bandeja):
+    """Traduce el valor de bandeja de la UI a lo que espera FastAPI."""
+    if not valor_bandeja:
+        return None
+    val = str(valor_bandeja).lower().strip()
+    if val in ["cas1", "cassette 1", "cassette1"]:
+        return "Cassette 1"
+    if val in ["cas2", "cassette 2", "cassette2"]:
+        return "Cassette 2"
+    if val in ["rear", "rear tray", "posterior", "bandeja posterior"]:
+        return "Rear Tray"
+    return None
+
+
+def mapear_webapp_a_config(data_webapp, num_archivos):
+    """Traduce el JSON enviado por la WebApp a la configuración completa del motor."""
+    c = {
+        "copias": max(1, int(data_webapp.get("copias", 1))),
+        "color": bool(data_webapp.get("color", False)),
+        "tamano_papel": str(data_webapp.get("tamano_papel", "carta")).lower(),
+        "tipo_papel": str(data_webapp.get("tipo_papel", "normal")).lower(),
+        "doble_cara": bool(data_webapp.get("doble_cara", False)),
+        "sin_bordes": bool(data_webapp.get("sin_bordes", False)),
+        "modo_escaner": bool(data_webapp.get("modo_escaner", False)),
+        "rango_paginas": str(data_webapp.get("rango", "")).strip(),
+        "bandeja_manual": normalizar_bandeja(data_webapp.get("bandeja")),
+        # Valores por defecto de acomodo
+        "layout_n_up": 1,
+        "columnas_forzadas": None,
+        "filas_forzadas": None,
+        "orientacion": str(data_webapp.get("orientacion", "vertical")).lower(),
+        "forzar_rotacion": str(data_webapp.get("forzar_rotacion", "ninguna")).lower(),
+        "escala_porcentaje": int(data_webapp.get("escala_porcentaje", 100)),
+        "modo_html": False,
+        "codigo_html": "",
+        "imagenes_por_hoja": 1,
+        "modo_tetris": bool(data_webapp.get("modo_tetris", False)),
+        "modo_planilla": False,
+        "dimensiones_cm": None,
+        "repeticiones": int(data_webapp.get("repeticiones", 0)),
+        "tipo_documento": "ine" if data_webapp.get("modo_ine") else "normal",
+    }
+
+    lid = str(data_webapp.get("layout_id", "layout_1"))
+
+    # 1. Cuadrículas estándar
+    if lid == "layout_1":
+        c["layout_n_up"] = 1
+    elif lid == "layout_2_horiz":  # 2 Apiladas (1 col, 2 filas)
+        c["layout_n_up"] = 2
+        c["columnas_forzadas"] = 1
+        c["filas_forzadas"] = 2
+    elif lid == "layout_2_vert":  # 2 Lado a Lado (2 cols, 1 fila)
+        c["layout_n_up"] = 2
+        c["columnas_forzadas"] = 2
+        c["filas_forzadas"] = 1
+    elif lid == "layout_4":
+        c["layout_n_up"] = 4
+        c["columnas_forzadas"] = 2
+        c["filas_forzadas"] = 2
+    elif lid == "layout_6":
+        c["layout_n_up"] = 6
+        c["columnas_forzadas"] = 2
+        c["filas_forzadas"] = 3
+    elif lid == "layout_8":
+        c["layout_n_up"] = 8
+        c["columnas_forzadas"] = 2
+        c["filas_forzadas"] = 4
+
+    # 2. Planillas de medidas exactas
+    elif lid == "planilla_infantil":
+        c["modo_planilla"] = True
+        c["dimensiones_cm"] = [2.5, 3.0]
+        c["repeticiones"] = int(data_webapp.get("repeticiones", 0))
+    elif lid == "planilla_pasaporte":
+        c["modo_planilla"] = True
+        c["dimensiones_cm"] = [3.5, 4.5]
+        c["repeticiones"] = int(data_webapp.get("repeticiones", 0))
+    elif lid == "planilla_custom":
+        ancho_cm = float(data_webapp.get("ancho_cm", 5.0))
+        alto_cm = float(data_webapp.get("alto_cm", 5.0))
+        c["modo_planilla"] = True
+        c["dimensiones_cm"] = [ancho_cm, alto_cm]
+        c["repeticiones"] = int(data_webapp.get("repeticiones", 0))
+
+    # 3. Layouts asimétricos (3 y 5 imágenes)
+    elif lid in PLANTILLAS_HTML:
+        plantilla = PLANTILLAS_HTML[lid]
+        c["modo_html"] = True
+        c["codigo_html"] = plantilla["html"]
+        c["imagenes_por_hoja"] = plantilla["imagenes_por_hoja"]
+
+    # 4. Todo en 1 hoja automático
+    if data_webapp.get("modo_todo_en_uno"):
+        c["layout_n_up"] = max(1, num_archivos)
+        c["columnas_forzadas"] = None
+        c["filas_forzadas"] = None
+
+    return c
+
+
+# ================= MOTOR DE GENERACIÓN PDF =================
 
 async def unificar_y_procesar_a_pdf(lista_archivos, ruta_procesados, config_json):
     ruta_salida = os.path.join(ruta_procesados, "documento_final.pdf")
     layout_n = config_json.get("layout_n_up", 1)
     tamano_papel = config_json.get("tamano_papel", "carta")
     orientacion = config_json.get("orientacion", "vertical")
-    
     tipo_doc = config_json.get("tipo_documento", "normal").lower()
     escala = config_json.get("escala_porcentaje", 100) / 100.0
-
     forzar_rotacion = config_json.get("forzar_rotacion", "ninguna")
 
     todas_las_imagenes = []
-    
+
+    # 1. EXTRACCIÓN Y FILTRO DE PÁGINAS
     for archivo in lista_archivos:
         ext = archivo.lower().split('.')[-1]
         if ext in ['docx', 'doc']:
@@ -265,488 +489,297 @@ async def unificar_y_procesar_a_pdf(lista_archivos, ruta_procesados, config_json
             es_pdf = False
 
         if es_pdf:
-            rango_str = config_json.get("rango_paginas", "todos")
+            rango_str = config_json.get("rango_paginas", "")
             doc = fitz.open(archivo_a_procesar)
-            
-            # Decodificamos qué páginas quiere el cliente realmente
             paginas_validas = analizar_rango(rango_str, len(doc))
-            
+
             for i in range(len(doc)):
-                # Si hay un filtro activo y esta página NO está en la lista, la saltamos (Ahorro masivo de RAM)
                 if paginas_validas is not None and i not in paginas_validas:
                     continue
-                    
-                pix = doc[i].get_pixmap(matrix=fitz.Matrix(4.16, 4.16)) 
+                pix = doc[i].get_pixmap(matrix=fitz.Matrix(4.16, 4.16))
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                 todas_las_imagenes.append(img)
             doc.close()
         else:
             todas_las_imagenes.append(Image.open(archivo_a_procesar).convert("RGB"))
 
-    # =========================================================
-    # PRE-PROCESAMIENTO: ROTACIÓN FORZADA
-    # =========================================================
+    if not todas_las_imagenes:
+        crear_lienzo(tamano_papel, orientacion).save(ruta_salida, resolution=300.0)
+        return ruta_salida
+
+    # 2. PRE-PROCESAMIENTO: ROTACIÓN FORZADA
     for idx, img in enumerate(todas_las_imagenes):
         if forzar_rotacion == "vertical" and img.width > img.height:
             todas_las_imagenes[idx] = img.rotate(90, expand=True)
         elif forzar_rotacion == "horizontal" and img.height > img.width:
             todas_las_imagenes[idx] = img.rotate(90, expand=True)
 
-    # =========================================================
-    # MEJORA VISUAL AUTOMÁTICA (MODO ESCÁNER / INE)
-    # =========================================================
+    # 3. MEJORA VISUAL AUTOMÁTICA (MODO ESCÁNER / INE)
     modo_escaner = config_json.get("modo_escaner", False)
-    
     for idx, img in enumerate(todas_las_imagenes):
         if tipo_doc == "ine":
-            # Si es INE, aplicamos limpieza ligera para no perder la foto/color de la persona
             todas_las_imagenes[idx] = mejorar_contraste_ine(img)
         elif modo_escaner:
-            # Si piden modo escáner para recibos o actas, aplicamos B/N agresivo anti-sombras
             todas_las_imagenes[idx] = limpiar_documento_opencv(img)
 
-    # =========================================================
-    # CARRIL HTML / DISEÑOS ASIMÉTRICOS (PLAYWRIGHT BLINDADO)
-    # =========================================================
+    # 4. CARRIL HTML ASIMÉTRICO (PLAYWRIGHT BLINDADO CON SOPORTE MULTI-HOJA)
     if config_json.get("modo_html", False) and config_json.get("codigo_html"):
-        codigo_base = config_json.get("codigo_html", "")
-        
-        # 1. Sanitización básica: Eliminar cualquier etiqueta <script> por si el LLM alucina
-        codigo_base = re.sub(r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>', '', codigo_base, flags=re.IGNORECASE)
-        
-        # 2. Reemplazar las variables {img_0}, {img_1} por los datos base64 reales
-        for idx, img in enumerate(todas_las_imagenes):
-            buffered = BytesIO()
-            img.save(buffered, format="PNG")
-            img_str = base64.b64encode(buffered.getvalue()).decode()
-            b64_uri = f"data:image/png;base64,{img_str}"
-            codigo_base = codigo_base.replace(f"{{img_{idx}}}", b64_uri)
-            
-        # 3. Mapear tamaño y orientación real para CSS y Playwright
+        plantilla_raw = re.sub(
+            r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>',
+            '',
+            config_json.get("codigo_html"),
+            flags=re.IGNORECASE
+        )
+        imgs_por_hoja = max(1, int(config_json.get("imagenes_por_hoja", 3)))
         formato_pw = "Legal" if tamano_papel.lower() == "oficio" else "Letter"
         es_horizontal = (orientacion.lower() == "horizontal")
         size_css = f"{formato_pw.lower()} {'landscape' if es_horizontal else 'portrait'}"
-            
-        html_final = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <style>
-                @page {{ size: {size_css}; margin: 0; }}
-                body {{ margin: 0; padding: 0; box-sizing: border-box; width: 100vw; height: 100vh; overflow: hidden; }}
-            </style>
-        </head>
-        <body>{codigo_base}</body>
-        </html>
-        """
-        
-        # 4. Lanzar Chrome en modo fantasma con bloqueo de red y timeout estricto
+
+        pdf_final_doc = fitz.open()
+
         async with async_playwright() as p:
             browser = await p.chromium.launch()
             page = await browser.new_page()
-            
-            # CORTAFUEGOS: Bloquear cualquier petición externa (solo permitir imágenes base64 "data:" o "about:blank")
             await page.route(
-                "**/*", 
+                "**/*",
                 lambda route: route.continue_() if route.request.url.startswith(("data:", "about:")) else route.abort()
             )
-            
-            # Timeout estricto de 5 segundos para evitar cuelgues
-            await page.set_content(html_final, timeout=5000, wait_until="domcontentloaded")
-            
-            await page.pdf(
-                path=ruta_salida, 
-                format=formato_pw, 
-                landscape=es_horizontal,
-                print_background=True
-            )
+
+            for lote_idx in range(0, len(todas_las_imagenes), imgs_por_hoja):
+                lote = todas_las_imagenes[lote_idx:lote_idx + imgs_por_hoja]
+                codigo_hoja = plantilla_raw
+
+                for slot in range(imgs_por_hoja):
+                    if slot < len(lote):
+                        buffered = BytesIO()
+                        lote[slot].save(buffered, format="PNG")
+                        b64_uri = f"data:image/png;base64,{base64.b64encode(buffered.getvalue()).decode()}"
+                    else:
+                        b64_uri = PIXEL_TRANSPARENTE
+                    codigo_hoja = codigo_hoja.replace(f"{{img_{slot}}}", b64_uri)
+
+                html_final = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <style>
+                        @page {{ size: {size_css}; margin: 0; }}
+                        body {{ margin: 0; padding: 0; box-sizing: border-box; width: 100vw; height: 100vh; overflow: hidden; }}
+                    </style>
+                </head>
+                <body>{codigo_hoja}</body>
+                </html>
+                """
+                temp_pdf_hoja = os.path.join(ruta_procesados, f"_temp_html_{lote_idx}.pdf")
+                await page.set_content(html_final, timeout=5000, wait_until="domcontentloaded")
+                await page.pdf(path=temp_pdf_hoja, format=formato_pw, landscape=es_horizontal, print_background=True)
+
+                hoja_doc = fitz.open(temp_pdf_hoja)
+                pdf_final_doc.insert_pdf(hoja_doc)
+                hoja_doc.close()
+                os.remove(temp_pdf_hoja)
+
             await browser.close()
-            
+
+        pdf_final_doc.save(ruta_salida)
+        pdf_final_doc.close()
         return ruta_salida
 
-    # =========================================================
-    # MODO TETRIS MATEMÁTICO (BIN PACKING)
-    # =========================================================
+    # 5. CARRIL TETRIS MATEMÁTICO (BIN PACKING)
     if config_json.get("modo_tetris", False):
-        
-        espaciado = 20 # Espacio para cortes
-        margen_seguro = 50 # Margen perimetral
-        
+        espaciado = 20
+        margen_seguro = 50
         hoja_prueba = crear_lienzo(tamano_papel, orientacion)
-        ancho_util = hoja_prueba.width - (margen_seguro * 2)
-        alto_util = hoja_prueba.height - (margen_seguro * 2)
-        
-        # rotation=True permite al algoritmo girar las fotos para encontrar huecos
         packer = rectpack.newPacker(rotation=True)
-        
-        # 1. Alimentar al algoritmo con el tamaño original de cada imagen
+
         for idx, img in enumerate(todas_las_imagenes):
             packer.add_rect(img.width + espaciado, img.height + espaciado, rid=idx)
-            
-        # 2. Agregar hojas en blanco infinitas (el algoritmo usará solo las necesarias)
         for _ in range(len(todas_las_imagenes)):
-            packer.add_bin(ancho_util, alto_util)
-            
-        # 3. Calcular el empaquetado perfecto
+            packer.add_bin(hoja_prueba.width - (margen_seguro * 2), hoja_prueba.height - (margen_seguro * 2))
         packer.pack()
-        
+
         paginas_pdf = []
-        
-        # 4. Dibujar los resultados
-        for bin in packer:
+        for bin_pack in packer:
             hoja = crear_lienzo(tamano_papel, orientacion)
-            for rect in bin:
-                idx = rect.rid
-                img = todas_las_imagenes[idx]
-                
-                # Si el algoritmo decidió que la imagen encajaba mejor rotada, la giramos físicamente
+            for rect in bin_pack:
+                img = todas_las_imagenes[rect.rid]
                 if rect.width != (img.width + espaciado):
                     img = img.rotate(90, expand=True)
-                    
-                x_pos = margen_seguro + rect.x
-                y_pos = margen_seguro + rect.y
-                
-                hoja.paste(img, (x_pos, y_pos))
-                
+                hoja.paste(img, (margen_seguro + rect.x, margen_seguro + rect.y))
             paginas_pdf.append(hoja)
-            
+
         if paginas_pdf:
             paginas_pdf[0].save(ruta_salida, save_all=True, append_images=paginas_pdf[1:], resolution=300.0)
-            
         return ruta_salida
 
-    # =========================================================
-    # MODO ESPECIAL: COPIA DE INE / IDENTIFICACIONES
-    # =========================================================
+    # 6. CARRIL COPIA DE INE / CREDENCIALES
     if tipo_doc == "ine" and len(todas_las_imagenes) <= 2:
         hoja = crear_lienzo(tamano_papel, orientacion)
         ancho_ine = int(1015 * escala)
         alto_ine = int(638 * escala)
-        
         for idx, img in enumerate(todas_las_imagenes):
-            # MAGIA: Si el cliente mandó la foto vertical, la acostamos (90 grados)
             if img.height > img.width:
                 img = img.rotate(90, expand=True)
-                
             img_opt = ImageOps.pad(img, (ancho_ine, alto_ine), method=Image.Resampling.LANCZOS, color="white")
             x_offset = (hoja.width - img_opt.width) // 2
-            y_base = (hoja.height // 2) * idx 
+            y_base = (hoja.height // 2) * idx
             y_offset = y_base + ((hoja.height // 2) - img_opt.height) // 2
             hoja.paste(img_opt, (x_offset, y_offset))
-            
         hoja.save(ruta_salida, resolution=300.0)
         return ruta_salida
 
-    # =========================================================
-    # 2. MODO PLANILLA UNIVERSAL Y TAMAÑOS EXACTOS (ANCLAJE TOP-LEFT)
-    # =========================================================
-    modo_planilla = config_json.get("modo_planilla", False)
-    dimensiones_cm = config_json.get("dimensiones_cm")
-    repeticiones = config_json.get("repeticiones", 1)
-
-    if modo_planilla or dimensiones_cm:
-        paginas_pdf = []
-        DPI_CM = 118.11 # 300 Píxeles / 2.54 cm
-        
-        if dimensiones_cm and isinstance(dimensiones_cm, list) and len(dimensiones_cm) == 2:
-            ancho_px = int(dimensiones_cm[0] * DPI_CM)
-            alto_px = int(dimensiones_cm[1] * DPI_CM)
+    # 7. CARRIL PLANILLAS INFANTILES / PASAPORTE / EXACTAS
+    if config_json.get("modo_planilla", False) or config_json.get("dimensiones_cm"):
+        DPI_CM = 118.11
+        dims = config_json.get("dimensiones_cm")
+        if dims and isinstance(dims, list) and len(dims) == 2:
+            ancho_px = int(dims[0] * DPI_CM)
+            alto_px = int(dims[1] * DPI_CM)
         else:
             ancho_px = int(10 * DPI_CM)
             alto_px = int(15 * DPI_CM)
 
-        espaciado = 20 # Píxeles de separación para tijeras
-        margen_seguro = 100 # Margen superior e izquierdo (aprox 8.5 mm)
-        
-        hoja_prueba = crear_lienzo(tamano_papel, orientacion)
-        
-        # Calcular capacidad tomando en cuenta que ahora partimos desde una esquina
-        espacio_util_x = hoja_prueba.width - (margen_seguro * 2)
-        espacio_util_y = hoja_prueba.height - (margen_seguro * 2)
-        
-        cols_posibles = max(1, espacio_util_x // (ancho_px + espaciado))
-        filas_posibles = max(1, espacio_util_y // (alto_px + espaciado))
-        capacidad_hoja = cols_posibles * filas_posibles
-
-        # Preparar la lista de impresión con relleno inteligente (pad)
-        lista_a_imprimir = []
-        if repeticiones == 0:
-            capacidad_por_img = max(1, capacidad_hoja // len(todas_las_imagenes))
-            for img in todas_las_imagenes:
-                img_rec = ImageOps.pad(img, (ancho_px, alto_px), method=Image.Resampling.LANCZOS, color="white")
-                lista_a_imprimir.extend([img_rec] * capacidad_por_img)
-        else:
-            for img in todas_las_imagenes:
-                img_rec = ImageOps.pad(img, (ancho_px, alto_px), method=Image.Resampling.LANCZOS, color="white")
-                lista_a_imprimir.extend([img_rec] * repeticiones)
-
-        # Acomodar en la cuadrícula (Anclada arriba a la izquierda)
+        espaciado = 20
+        margen = 100
         hoja_actual = crear_lienzo(tamano_papel, orientacion)
-        dibujadas_en_hoja = 0
+        cols = max(1, (hoja_actual.width - (margen * 2)) // (ancho_px + espaciado))
+        filas = max(1, (hoja_actual.height - (margen * 2)) // (alto_px + espaciado))
+        capacidad_hoja = cols * filas
 
-        for i, img_lista in enumerate(lista_a_imprimir):
-            col = dibujadas_en_hoja % cols_posibles
-            fila = dibujadas_en_hoja // cols_posibles
-            
-            # Aquí ocurre la magia del ahorro de papel:
-            x_pos = margen_seguro + (col * (ancho_px + espaciado))
-            y_pos = margen_seguro + (fila * (alto_px + espaciado))
-            
-            hoja_actual.paste(img_lista, (x_pos, y_pos))
-            dibujadas_en_hoja += 1
+        lista_imprimir = []
+        repeticiones = config_json.get("repeticiones", 0)
+        if repeticiones == 0:
+            rep_por_img = max(1, capacidad_hoja // len(todas_las_imagenes))
+        else:
+            rep_por_img = repeticiones
 
-            if dibujadas_en_hoja >= capacidad_hoja or i == len(lista_a_imprimir) - 1:
+        for img in todas_las_imagenes:
+            img_rec = ImageOps.pad(img, (ancho_px, alto_px), method=Image.Resampling.LANCZOS, color="white")
+            lista_imprimir.extend([img_rec] * rep_por_img)
+
+        paginas_pdf = []
+        dibujadas = 0
+        for i, img in enumerate(lista_imprimir):
+            x_pos = margen + ((dibujadas % cols) * (ancho_px + espaciado))
+            y_pos = margen + ((dibujadas // cols) * (alto_px + espaciado))
+            hoja_actual.paste(img, (x_pos, y_pos))
+            dibujadas += 1
+
+            if dibujadas >= capacidad_hoja or i == len(lista_imprimir) - 1:
                 paginas_pdf.append(hoja_actual)
-                if i != len(lista_a_imprimir) - 1:
+                if i != len(lista_imprimir) - 1:
                     hoja_actual = crear_lienzo(tamano_papel, orientacion)
-                    dibujadas_en_hoja = 0
+                    dibujadas = 0
 
         if paginas_pdf:
             paginas_pdf[0].save(ruta_salida, save_all=True, append_images=paginas_pdf[1:], resolution=300.0)
         return ruta_salida
 
-    # =========================================================
-    # CÁLCULO DE CUADRÍCULA INTELIGENTE
-    # =========================================================
-    img_ejemplo = todas_las_imagenes[0] if todas_las_imagenes else None
-    es_img_horizontal = img_ejemplo.width > img_ejemplo.height if img_ejemplo else True
-    
-    columnas, filas = 1, 1
-    if layout_n == 2:
-        if orientacion == "vertical":
-            columnas, filas = (1, 2) if es_img_horizontal else (2, 1)
-        else:
-            columnas, filas = (2, 1) if es_img_horizontal else (1, 2)
-    elif layout_n > 2:
-        # Fórmula maestra: Para 3 o 4 (2x2), para 5 o 6 (2x3), para 7 u 8 (2x4)...
-        columnas = 2
-        filas = math.ceil(layout_n / 2)
+    # 8. CARRIL CUADRÍCULA ESTÁNDAR + SIN BORDES + ESCALA
+    if config_json.get("columnas_forzadas") and config_json.get("filas_forzadas"):
+        columnas = config_json["columnas_forzadas"]
+        filas = config_json["filas_forzadas"]
+    else:
+        img_ejemplo = todas_las_imagenes[0]
+        es_img_horizontal = img_ejemplo.width > img_ejemplo.height
+        columnas, filas = 1, 1
+        if layout_n == 2:
+            columnas, filas = (1, 2) if (orientacion == "vertical") == es_img_horizontal else (2, 1)
+        elif layout_n > 2:
+            columnas = 2
+            filas = math.ceil(layout_n / 2)
 
-    # =========================================================
-    # EMPAQUETADO COMPACTO (CLUSTERING POR ESCALA)
-    # =========================================================
     paginas_pdf = []
+    sin_bordes = config_json.get("sin_bordes", False)
+
     for i in range(0, len(todas_las_imagenes), layout_n):
         lote = todas_las_imagenes[i:i + layout_n]
         hoja = crear_lienzo(tamano_papel, orientacion)
-        
-        # Tamaño base de la celda si ocupara toda la hoja
-        ancho_base = hoja.width // columnas
-        alto_base = hoja.height // filas
-        
-        # Tamaño real de la celda reducida
-        ancho_celda_real = int(ancho_base * escala)
-        alto_celda_real = int(alto_base * escala)
-        
-        # Agruparlas arriba al centro si hay reducción
-        if escala < 1.0:
-            grid_x_start = (hoja.width - (ancho_celda_real * columnas)) // 2
-            grid_y_start = 150 # Margen superior para que queden pegadas arriba
-        else:
-            grid_x_start = 0
-            grid_y_start = 0
-        
+        w_celda = int((hoja.width // columnas) * escala)
+        h_celda = int((hoja.height // filas) * escala)
+
+        y_start = 150 if escala < 1.0 else 0
+        x_start = (hoja.width - (w_celda * columnas)) // 2 if escala < 1.0 else 0
+
         for idx, img in enumerate(lote):
-            col = idx % columnas
-            fila = idx // columnas
-            
-            # Punto de anclaje de esta celda en el empaquetado
-            x_base = grid_x_start + (col * ancho_celda_real)
-            y_base = grid_y_start + (fila * alto_celda_real)
-            
-            # Se optimiza la imagen para encajar perfectamente en su nueva celda reducida
-            img_optimizada = optimizar_orientacion(img, ancho_celda_real, alto_celda_real)
-            
-            if config_json.get("sin_bordes", False):
-                img_optimizada = ImageOps.fit(
-                    img_optimizada, (ancho_celda_real, alto_celda_real), 
+            img_opt = optimizar_orientacion(img, w_celda, h_celda)
+            if sin_bordes:
+                img_opt = ImageOps.fit(
+                    img_opt, (w_celda, h_celda),
                     method=Image.Resampling.LANCZOS, centering=(0.5, 0.5)
                 )
             else:
-                margen = 15 if escala >= 1.0 else 0 
-                img_optimizada = ImageOps.contain(
-                    img_optimizada, (ancho_celda_real - margen*2, alto_celda_real - margen*2), 
+                margen = 15 if escala >= 1.0 else 0
+                img_opt = ImageOps.contain(
+                    img_opt, (w_celda - margen * 2, h_celda - margen * 2),
                     method=Image.Resampling.LANCZOS
                 )
-            
-            # Centrar dentro de la pequeña celda empaquetada
-            x_offset = x_base + (ancho_celda_real - img_optimizada.width) // 2
-            y_offset = y_base + (alto_celda_real - img_optimizada.height) // 2
-            
-            hoja.paste(img_optimizada, (x_offset, y_offset))
-            
+            x_base = x_start + ((idx % columnas) * w_celda)
+            y_base = y_start + ((idx // columnas) * h_celda)
+            hoja.paste(img_opt, (x_base + (w_celda - img_opt.width) // 2, y_base + (h_celda - img_opt.height) // 2))
         paginas_pdf.append(hoja)
-        
+
     if paginas_pdf:
         paginas_pdf[0].save(ruta_salida, save_all=True, append_images=paginas_pdf[1:], resolution=300.0)
-        
     return ruta_salida
 
-def analizar_cobertura_pagina(page):
-    """
-    Renderiza la página y usa Numpy para calcular el % exacto de tinta a color y B/N.
-    """
-    # Renderizamos a 72 DPI (suficiente para análisis de cobertura y ultra rápido)
-    pix = page.get_pixmap(matrix=fitz.Matrix(1, 1), colorspace=fitz.csRGB)
-    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-    
-    # Convertimos la imagen a una matriz matemática de píxeles
-    img_array = np.array(img)
-    
-    # 1. Detectar píxeles "blancos" (el papel) - RGB por encima de 240
-    mascara_blanca = np.all(img_array > 240, axis=-1)
-    
-    # 2. Calcular la diferencia entre el canal más fuerte y el más débil
-    max_c = np.max(img_array, axis=-1).astype(int)
-    min_c = np.min(img_array, axis=-1).astype(int)
-    diferencia = max_c - min_c
-    
-    # 3. Clasificar los píxeles (ignorando el fondo blanco)
-    # Color: Hay variación fuerte entre RGB (ej. rojo es R:255, G:0, B:0)
-    mascara_color = (diferencia > 15) & (~mascara_blanca)
-    # B/N: Poca variación entre RGB (ej. gris es R:100, G:100, B:100)
-    mascara_bn = (diferencia <= 15) & (~mascara_blanca)
-    
-    total_pixeles = img_array.shape[0] * img_array.shape[1]
-    
-    # Porcentajes de cobertura (0.0 a 1.0)
-    cobertura_color = np.sum(mascara_color) / total_pixeles
-    cobertura_bn = np.sum(mascara_bn) / total_pixeles
-    
-    return cobertura_color, cobertura_bn
 
-def calcular_costo_gx7110(pdf_path, config_json):
-    """Calcula precios dinámicos basándose en el consumo exacto de tinta (cobertura)."""
-    doc = fitz.open(pdf_path)
-    num_paginas = len(doc)
-    
-    copias = config_json.get("copias", 1)
-    doble_cara = config_json.get("doble_cara", False)
-    forzar_bn = (config_json.get("color") is False)
-    es_fotografico = config_json.get("tipo_papel") == "fotografico"
-    
-    costo_tinta_total = 0.0
-    precio_venta_total = 0.0
-    
-    # Estadísticas para mostrarle a tu padre en Telegram
-    resumen = {"texto_bn": 0, "texto_color": 0, "imagen_full": 0}
-    
-    # Costos base por HOJA COMPLETA (Asumiendo 100% de cobertura de tinta en la Maxify)
-    costo_100pct_color = 1.00 if not es_fotografico else 1.50
-    costo_100pct_bn = 0.60
-    
-    for i in range(num_paginas):
-        cob_color, cob_bn = analizar_cobertura_pagina(doc[i])
-        
-        if forzar_bn:
-            cob_bn = cob_bn + cob_color
-            cob_color = 0.0
-            
-        # Gasto exacto de tinta de esta página basado en su porcentaje de mancha
-        gasto_tinta_pag = (cob_color * costo_100pct_color) + (cob_bn * costo_100pct_bn)
-        costo_tinta_total += gasto_tinta_pag
-        
-        # PRECIOS DE VENTA DINÁMICOS POR PÁGINA SEGÚN COBERTURA
-        if es_fotografico:
-            precio_pag = 15.00 # Foto siempre se cobra premium
-            resumen["imagen_full"] += 1
-        else:
-            if cob_color > 0.15:
-                # Más del 15% de color (Fotos rellenas, posters sin bordes)
-                precio_pag = 6.00
-                resumen["imagen_full"] += 1
-            elif cob_color > 0.01:
-                # Entre 1% y 15% (Documento de texto con títulos de color o gráficas)
-                precio_pag = 3.00
-                resumen["texto_color"] += 1
-            else:
-                # Puro B/N o con color imperceptible
-                precio_pag = 1.50
-                resumen["texto_bn"] += 1
-                
-        precio_venta_total += precio_pag
-        
-    doc.close()
-    
-    # Multiplicar por juegos (copias)
-    costo_tinta_total *= copias
-    precio_venta_total *= copias
-    
-    # Calcular Papel
-    hojas_fisicas_por_copia = math.ceil(num_paginas / 2) if doble_cara else num_paginas
-    total_hojas_papel = hojas_fisicas_por_copia * copias
-    costo_hoja = 3.00 if es_fotografico else 0.30
-    costo_interno_papel = total_hojas_papel * costo_hoja
-    
-    costo_interno_total = costo_interno_papel + costo_tinta_total
-    ganancia = precio_venta_total - costo_interno_total
-    
-    # Multiplicar el resumen por las copias para el reporte
-    resumen = {k: v * copias for k, v in resumen.items()}
-    
-    return {
-        "paginas_totales": num_paginas * copias,
-        "resumen_tipos": resumen,
-        "hojas_fisicas_a_usar": total_hojas_papel,
-        "costo_interno_mxn": round(costo_interno_total, 2),
-        "precio_venta_sugerido": round(precio_venta_total, 2),
-        "ganancia_estimada": round(ganancia, 2)
-    }
-
-# ================= HANDLERS DE TELEGRAM =================
+# ================= COMUNICACIÓN CON TIENDA Y REPORTES =================
 
 async def enviar_a_fastapi(pdf_path, config_json):
     """Envía el PDF final y la configuración a la PC de la tienda vía WireGuard."""
-    # CAMBIA ESTO por la IP que tenga la PC de la tienda en tu túnel WireGuard
-    url_tienda = "http://10.5.5.4:8000/imprimir" 
-    
     try:
         async with aiohttp.ClientSession() as session:
             with open(pdf_path, 'rb') as f:
                 data = aiohttp.FormData()
                 data.add_field('archivo', f, filename=os.path.basename(pdf_path))
                 data.add_field('config', json.dumps(config_json))
-                
-                async with session.post(url_tienda, data=data) as response:
+
+                async with session.post(URL_TIENDA, data=data, timeout=aiohttp.ClientTimeout(total=30)) as response:
                     if response.status == 200:
                         return True, "Enviado con éxito."
                     else:
-                        return False, f"Error del servidor de la tienda: {response.status}"
+                        return False, f"Error del servidor de la tienda: HTTP {response.status}"
     except Exception as e:
-        return False, f"No se pudo conectar con la tienda. ¿Está encendida la PC o el túnel? Error: {str(e)}"
+        return False, f"No se pudo conectar con la tienda. ¿Está encendida la PC o el túnel WireGuard? ({str(e)})"
 
-async def generar_y_enviar_reporte(update: Update, texto: str):
+
+async def generar_y_enviar_reporte(update: Update, texto_periodo: str):
+    """Genera resumen financiero y archivo Excel para el periodo indicado."""
     archivo_csv = "registro_impresiones.csv"
     if not os.path.exists(archivo_csv):
         await update.message.reply_text("⚠️ Aún no hay trabajos registrados en el sistema.")
         return
-        
-    # Leer la base de datos
+
     df = pd.read_csv(archivo_csv)
     df['Fecha'] = pd.to_datetime(df['Fecha']).dt.date
     hoy = datetime.now().date()
-    texto = texto.lower()
-    
-    # Filtros de Tiempo Inteligentes
-    if "hoy" in texto or "diario" in texto:
+    t = texto_periodo.lower()
+
+    if "hoy" in t or "diario" in t:
         df_filtro = df[df['Fecha'] == hoy]
         periodo = "Hoy"
-    elif "semana" in texto:
+    elif "semana" in t:
         inicio_semana = hoy - pd.Timedelta(days=hoy.weekday())
         df_filtro = df[df['Fecha'] >= inicio_semana]
         periodo = "Esta Semana"
-    elif "mes" in texto:
-        df_filtro = df[pd.to_datetime(df['Fecha']).dt.month == hoy.month]
+    elif "mes" in t:
+        df_filtro = df[
+            (pd.to_datetime(df['Fecha']).dt.month == hoy.month) &
+            (pd.to_datetime(df['Fecha']).dt.year == hoy.year)
+        ]
         periodo = "Este Mes"
     else:
-        df_filtro = df # Histórico completo
+        df_filtro = df
         periodo = "Histórico Completo"
-        
+
     if df_filtro.empty:
-        await update.message.reply_text(f"📊 No hay impresiones registradas para el periodo: **{periodo}**.", parse_mode='Markdown')
+        await update.message.reply_text(
+            f"📊 No hay impresiones registradas para el periodo: **{periodo}**.",
+            parse_mode='Markdown'
+        )
         return
 
-    # Cálculos Matemáticos
     ventas = df_filtro['Venta_Total'].sum()
     costos = df_filtro['Costo_Total'].sum()
     ganancia = df_filtro['Ganancia'].sum()
@@ -760,16 +793,15 @@ async def generar_y_enviar_reporte(update: Update, texto: str):
     resumen += f"📉 **Gasto en Insumos:** ${costos:.2f} MXN\n"
     resumen += f"✅ **GANANCIA NETA:** ${ganancia:.2f} MXN\n\n"
     resumen += f"📦 **Consumo Físico:**\n"
+    resumen += f"- Órdenes completadas: {len(df_filtro)}\n"
     resumen += f"- Hojas utilizadas: {hojas}\n"
     resumen += f"- Impresiones B/N: {bn}\n"
     resumen += f"- Impresiones Color: {color}\n"
     resumen += f"- Fotografías Premium: {fotos}\n"
 
-    # Generar Excel al vuelo
-    nombre_excel = f"Reporte_{periodo.replace(' ', '_')}.xlsx"
+    nombre_excel = f"Reporte_{periodo.replace(' ', '_')}_{hoy}.xlsx"
     df_filtro.to_excel(nombre_excel, index=False, engine='openpyxl')
-    
-    # Enviar por Telegram
+
     with open(nombre_excel, 'rb') as doc:
         await update.message.reply_document(
             document=doc,
@@ -777,34 +809,32 @@ async def generar_y_enviar_reporte(update: Update, texto: str):
             caption=resumen,
             parse_mode='Markdown'
         )
-        
-    os.remove(nombre_excel) # Borramos el Excel temporal para no saturar el disco
 
+    if os.path.exists(nombre_excel):
+        os.remove(nombre_excel)
+
+
+# ================= TAREAS AUTOMÁTICAS (JOBQUEUE) =================
 
 async def tarea_mantenimiento_y_limpieza(context: ContextTypes.DEFAULT_TYPE = None):
-    """Borra temporales de 24h y carpetas de más de 15 días."""
+    """Borra temporales de >24h y carpetas de órdenes de >15 días."""
     print("🧹 Iniciando limpieza automática de disco...")
     ahora = time.time()
 
-    # 1. Limpiar temp_uploads (> 24 horas)
     temp_dir = "temp_uploads"
     if os.path.exists(temp_dir):
         for archivo in os.listdir(temp_dir):
             ruta = os.path.join(temp_dir, archivo)
-            if os.path.isfile(ruta):
-                if (ahora - os.path.getmtime(ruta)) > (24 * 3600):
-                    os.remove(ruta)
-                    print(f"🗑️ Eliminado temporal caducado: {archivo}")
+            if os.path.isfile(ruta) and (ahora - os.path.getmtime(ruta)) > (24 * 3600):
+                os.remove(ruta)
+                print(f"🗑️ Eliminado temporal caducado: {archivo}")
 
-    # 2. Limpiar archivos_impresion (> 15 días)
-    base_dir = "archivos_impresion" # Carpeta base que configuraste
-    if os.path.exists(base_dir):
+    if os.path.exists(BASE_DIR):
         hace_15_dias = datetime.now() - timedelta(days=15)
-        for carpeta_fecha in os.listdir(base_dir):
-            ruta_carpeta = os.path.join(base_dir, carpeta_fecha)
+        for carpeta_fecha in os.listdir(BASE_DIR):
+            ruta_carpeta = os.path.join(BASE_DIR, carpeta_fecha)
             if os.path.isdir(ruta_carpeta):
                 try:
-                    # Aprovechamos que nombras las carpetas con la fecha (ej. "2026-11-13")
                     fecha_carpeta = datetime.strptime(carpeta_fecha, "%Y-%m-%d")
                     if fecha_carpeta < hace_15_dias:
                         shutil.rmtree(ruta_carpeta)
@@ -812,40 +842,44 @@ async def tarea_mantenimiento_y_limpieza(context: ContextTypes.DEFAULT_TYPE = No
                 except ValueError:
                     pass
 
+
 async def enviar_corte_automatico(context: ContextTypes.DEFAULT_TYPE):
-    """Genera y envía el Excel del día sin que nadie lo pida."""
-    print("📊 Ejecutando corte de caja automático de las 10:05 PM...")
+    """Envía el corte diario automático a los usuarios autorizados."""
+    print("📊 Ejecutando corte de caja automático...")
     archivo_csv = "registro_impresiones.csv"
     if not os.path.exists(archivo_csv):
         return
 
-    # Leer datos
-    import pandas as pd
     df = pd.read_csv(archivo_csv)
     df['Fecha'] = pd.to_datetime(df['Fecha']).dt.date
     hoy = datetime.now().date()
-    
     df_hoy = df[df['Fecha'] == hoy]
-    
-    # Asegúrate de tener declarada tu variable USUARIOS_AUTORIZADOS arriba en tu código
+
+    nombre_excel = f"Corte_Diario_{hoy}.xlsx"
+    if not df_hoy.empty:
+        df_hoy.to_excel(nombre_excel, index=False, engine='openpyxl')
+
     for admin_id in USUARIOS_AUTORIZADOS:
         try:
             if df_hoy.empty:
-                await context.bot.send_message(chat_id=admin_id, text="🌙 **CORTE AUTOMÁTICO:**\nHoy no hubo impresiones.")
+                await context.bot.send_message(
+                    chat_id=admin_id,
+                    text=f"🌙 **CORTE AUTOMÁTICO ({hoy}):**\nHoy no hubo impresiones registradas.",
+                    parse_mode='Markdown'
+                )
                 continue
 
             ventas = df_hoy['Venta_Total'].sum()
             costos = df_hoy['Costo_Total'].sum()
             ganancia = df_hoy['Ganancia'].sum()
+            hojas = df_hoy['Hojas_Fisicas'].sum()
 
             resumen = f"🌙 **CORTE DE CAJA AUTOMÁTICO: {hoy}**\n\n"
             resumen += f"💰 **Ingresos de hoy:** ${ventas:.2f} MXN\n"
             resumen += f"📉 **Gasto Insumos:** ${costos:.2f} MXN\n"
-            resumen += f"✅ **GANANCIA:** ${ganancia:.2f} MXN\n"
+            resumen += f"✅ **GANANCIA NETA:** ${ganancia:.2f} MXN\n"
+            resumen += f"📄 **Hojas gastadas:** {hojas} ({len(df_hoy)} órdenes)\n"
 
-            nombre_excel = f"Corte_Diario_{hoy}.xlsx"
-            df_hoy.to_excel(nombre_excel, index=False, engine='openpyxl')
-            
             with open(nombre_excel, 'rb') as doc:
                 await context.bot.send_document(
                     chat_id=admin_id,
@@ -856,330 +890,345 @@ async def enviar_corte_automatico(context: ContextTypes.DEFAULT_TYPE):
                 )
         except Exception as e:
             print(f"Error enviando reporte automático a {admin_id}: {e}")
-            
-    if os.path.exists("Corte_Diario_" + str(hoy) + ".xlsx"):
-        os.remove("Corte_Diario_" + str(hoy) + ".xlsx")
+
+    if os.path.exists(nombre_excel):
+        os.remove(nombre_excel)
+
+
+# ================= HANDLERS DE TELEGRAM V2 =================
+
+def usuario_permitido(user_id):
+    return (not USUARIOS_AUTORIZADOS) or (user_id in USUARIOS_AUTORIZADOS)
+
+
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not usuario_permitido(update.effective_user.id):
+        await update.message.reply_text("⛔ No tienes autorización para usar este servicio.")
+        return
+    teclado = [[InlineKeyboardButton("🎛️ ABRIR PANEL DE IMPRESIÓN", web_app=WebAppInfo(url=WEBAPP_URL))]]
+    await update.message.reply_text(
+        "🖨️ **Centro de Impresión Listo**\n\n"
+        "1️⃣ Reenvía aquí los archivos o fotos del cliente.\n"
+        "2️⃣ Toca **Abrir Panel de Impresión** para elegir acomodo y copias.\n"
+        "3️⃣ Revisa el precio, la vista previa y confirma.",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(teclado)
+    )
+
+
+async def cmd_limpiar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not usuario_permitido(update.effective_user.id):
+        return
+    chat_id = update.message.chat_id
+    if chat_id in sesiones_activas:
+        for ruta in sesiones_activas[chat_id].get("archivos_temporales", []):
+            if os.path.exists(ruta):
+                os.remove(ruta)
+        sesiones_activas.pop(chat_id, None)
+    context.user_data.pop('ultima_orden', None)
+    await update.message.reply_text("🗑️ Sesión limpia. Ya puedes mandar nuevos archivos.")
+
+
+async def cmd_estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not usuario_permitido(update.effective_user.id):
+        return
+    # Verificar ventas de hoy
+    ventas_hoy = 0.0
+    ordenes_hoy = 0
+    if os.path.exists("registro_impresiones.csv"):
+        df = pd.read_csv("registro_impresiones.csv")
+        hoy_str = datetime.now().strftime("%Y-%m-%d")
+        df_hoy = df[df['Fecha'] == hoy_str]
+        ventas_hoy = df_hoy['Venta_Total'].sum()
+        ordenes_hoy = len(df_hoy)
+
+    # Verificar conexión con la PC de la tienda
+    base_tienda = URL_TIENDA.rsplit("/", 1)[0]
+    estado_pc = "🔴 Desconectada"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(base_tienda, timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                if resp.status < 500:
+                    estado_pc = "🟢 En línea (Lista para imprimir)"
+    except Exception:
+        pass
+
+    await update.message.reply_text(
+        f"📡 **ESTADO DEL SISTEMA**\n\n"
+        f"🖥️ **PC Tienda:** {estado_pc}\n"
+        f"🧾 **Órdenes hoy:** {ordenes_hoy}\n"
+        f"💰 **Caja hoy:** ${ventas_hoy:.2f} MXN",
+        parse_mode='Markdown'
+    )
+
+
+async def cmd_reporte_hoy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if usuario_permitido(update.effective_user.id):
+        await generar_y_enviar_reporte(update, "hoy")
+
+
+async def cmd_reporte_semana(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if usuario_permitido(update.effective_user.id):
+        await generar_y_enviar_reporte(update, "semana")
+
+
+async def cmd_reporte_mes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if usuario_permitido(update.effective_user.id):
+        await generar_y_enviar_reporte(update, "mes")
+
+
+async def cmd_reporte_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if usuario_permitido(update.effective_user.id):
+        await generar_y_enviar_reporte(update, "total")
+
 
 async def recibir_archivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
-    user_id = update.effective_user.id
-    if USUARIOS_AUTORIZADOS and user_id not in USUARIOS_AUTORIZADOS:
-        await update.message.reply_text("⛔ No tienes autorización para usar este servicio de impresión.")
+    if not usuario_permitido(update.effective_user.id):
+        await update.message.reply_text("⛔ No tienes autorización para usar este servicio.")
         return
-    
-    # Inicializar memoria para este usuario si no existe
+
     if chat_id not in sesiones_activas:
         sesiones_activas[chat_id] = {"archivos_temporales": []}
-    
-    # Identificar si es documento o foto
-    archivo_tg = None
-    extension = ""
+
     if update.message.document:
         archivo_tg = await update.message.document.get_file()
-        extension = os.path.splitext(update.message.document.file_name)[1]
-    elif update.message.photo:
-        archivo_tg = await update.message.photo[-1].get_file() # Mayor resolución
+        extension = os.path.splitext(update.message.document.file_name)[1] or ".pdf"
+    else:
+        archivo_tg = await update.message.photo[-1].get_file()
         extension = ".jpg"
-        
-    # Guardar en una carpeta temporal global (se moverán al crear la orden)
-    tmp_dir = "temp_uploads"
-    os.makedirs(tmp_dir, exist_ok=True)
-    ruta_tmp = os.path.join(tmp_dir, f"{uuid.uuid4()}{extension}")
-    
+
+    os.makedirs("temp_uploads", exist_ok=True)
+    ruta_tmp = os.path.join("temp_uploads", f"{uuid.uuid4()}{extension}")
     await archivo_tg.download_to_drive(ruta_tmp)
     sesiones_activas[chat_id]["archivos_temporales"].append(ruta_tmp)
-    
-    await update.message.reply_text(f"📁 Archivo recibido. Llevas {len(sesiones_activas[chat_id]['archivos_temporales'])} archivo(s). Manda más, o envíame las instrucciones por texto para procesar la orden.")
 
-async def procesar_instruccion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    teclado = [[InlineKeyboardButton("🎛️ ABRIR PANEL DE IMPRESIÓN", web_app=WebAppInfo(url=WEBAPP_URL))]]
+    await update.message.reply_text(
+        f"📁 **{len(sesiones_activas[chat_id]['archivos_temporales'])} archivo(s) listos.**\n"
+        f"Manda más o abre el panel cuando termines:",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(teclado)
+    )
+
+
+async def manejar_datos_webapp(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Recibe el JSON determinista desde la WebApp y procesa la orden sin LLM."""
     chat_id = update.message.chat_id
-    texto = update.message.text
-
-    user_id = update.effective_user.id
-    if USUARIOS_AUTORIZADOS and user_id not in USUARIOS_AUTORIZADOS:
-        await update.message.reply_text("⛔ No tienes autorización para usar este servicio de impresión.")
+    if not usuario_permitido(update.effective_user.id):
         return
-    
+
+    data_interfaz = json.loads(update.message.web_app_data.data)
+
+    # Soporte futuro: si la WebApp envía petición directa de reporte
+    if data_interfaz.get("accion") == "reporte":
+        await generar_y_enviar_reporte(update, data_interfaz.get("periodo", "hoy"))
+        return
+
     if chat_id not in sesiones_activas or not sesiones_activas[chat_id]["archivos_temporales"]:
-        if "reporte" in texto.lower():
-            await generar_y_enviar_reporte(update, texto)
-            return
-        await update.message.reply_text("⚠️ No tengo archivos pendientes. Manda los documentos primero.")
+        await update.message.reply_text("⚠️ No tienes archivos pendientes. Manda los archivos primero.")
         return
-        
-    mensaje_estado = await update.message.reply_text("🧠 Analizando instrucciones y generando orden...")
-    
-    try:
-        cantidad_archivos = len(sesiones_activas[chat_id]["archivos_temporales"])
-        config_impresion = await extraer_instrucciones_llm(texto, cantidad_archivos)
-        
-        # === FILTRO DE LIMPIEZA Y NORMALIZACIÓN (DOBLE VALIDACIÓN) ===
-        texto_limpio = texto.lower() # Lo que el usuario escribió textualmente
-        # En tu bloque de FILTRO DE LIMPIEZA Y NORMALIZACIÓN:
-        if "200%" in texto_limpio or "al 200" in texto_limpio:
-            config_impresion["escala_porcentaje"] = 200
-        elif "50%" in texto_limpio or "mitad" in texto_limpio:
-            config_impresion["escala_porcentaje"] = 50
 
-        # Blindaje para Plantillas y Tamaños Exactos
-        if "infantil" in texto_limpio:
-            config_impresion["modo_planilla"] = True
-            config_impresion["dimensiones_cm"] = [2.5, 3.0]
-        elif "pasaporte" in texto_limpio:
-            config_impresion["modo_planilla"] = True
-            config_impresion["dimensiones_cm"] = [3.5, 4.5]
-            
-        if "llena la hoja" in texto_limpio or "toda la hoja" in texto_limpio or "planilla" in texto_limpio:
-            config_impresion["modo_planilla"] = True
-            if "repeticiones" not in config_impresion or config_impresion["repeticiones"] == 1:
-                config_impresion["repeticiones"] = 0 # 0 activa el llenado matemático automático
-        
-        # 1. Limpiar Tipo de Papel (Revisa el JSON del LLM y también tu texto crudo)
-        tipo_crudo = str(config_impresion.get("tipo_papel", "")).lower()
-        if "foto" in tipo_crudo or "glossy" in tipo_crudo or "foto" in texto_limpio:
-            config_impresion["tipo_papel"] = "fotografico"
-        else:
-            config_impresion["tipo_papel"] = "normal"
-            
-        # 2. Limpiar Tamaño de Papel
-        tamano_crudo = str(config_impresion.get("tamano_papel", "")).lower()
-        if "oficio" in tamano_crudo or "legal" in tamano_crudo or "oficio" in texto_limpio:
-            config_impresion["tamano_papel"] = "oficio"
-        else:
-            config_impresion["tamano_papel"] = "carta"
-            
-        # 3. Forzar Sin Bordes y Color si el LLM lo olvidó
-        if "sin borde" in texto_limpio:
-            config_impresion["sin_bordes"] = True
-        if "color" in texto_limpio:
-            config_impresion["color"] = True
+    num_archivos = len(sesiones_activas[chat_id]["archivos_temporales"])
+    config_impresion = mapear_webapp_a_config(data_interfaz, num_archivos)
 
-        # === CANDADO ESTRICTO DE RANGO DE PÁGINAS ===
-        rango_actual = config_impresion.get("rango_paginas", "todos")
-        if rango_actual in ["todos", "todas", None, "", "null"]:
-            # Si el LLM falló por completo, buscamos nosotros el patrón numérico (ej. 13-23) en el texto
-            rangos_hallados = re.findall(r'\d+\s*-\s*\d+', texto_limpio)
-            if rangos_hallados:
-                config_impresion["rango_paginas"] = ",".join(rangos_hallados)
-        # ===================================================
-            
-        # === CANDADO ESTRICTO PARA DOBLE CARA ===
-        # Lista de frases inequívocas que un cliente usa para doble cara
-        frases_duplex = ["doble cara", "ambos lados", "frente y vuelta", "dos caras", "frente y reverso"]
-        
-        if any(frase in texto_limpio for frase in frases_duplex):
-            config_impresion["doble_cara"] = True
-        else:
-            # Si no dijo ninguna de esas frases, apagamos el doble cara forzosamente
-            # para evitar que el LLM confunda "imprime los dos archivos" con "doble cara"
-            config_impresion["doble_cara"] = False
-        # ===============================================
-            
-        # 4. Asegurar valores básicos
-        config_impresion["copias"] = config_impresion.get("copias") or 1
-        config_impresion["layout_n_up"] = config_impresion.get("layout_n_up") or 1
-        # =============================================================
-            
-        # 2. Limpiar Tamaño de Papel
-        tamano_crudo = str(config_impresion.get("tamano_papel", "")).lower()
-        if "oficio" in tamano_crudo or "legal" in tamano_crudo:
-            config_impresion["tamano_papel"] = "oficio"
-        else:
-            config_impresion["tamano_papel"] = "carta"
-            
-        # 3. Asegurar valores básicos si el LLM los omite
-        config_impresion["copias"] = config_impresion.get("copias") or 1
-        config_impresion["layout_n_up"] = config_impresion.get("layout_n_up") or 1
-        # ==========================================
-        
-        # (A partir de aquí continúa tu código normal de unificar_y_procesar_a_pdf...)
-    except Exception as e:
-        await update.message.reply_text("❌ Hubo un error al entender las instrucciones.")
-        return
+    mensaje_estado = await update.message.reply_text("⚙️ Procesando documento y calculando cobro...")
 
     orden_id, ruta_originales, ruta_procesados = crear_carpetas_orden(chat_id)
-    
     archivos_orden = []
     for arch_tmp in sesiones_activas[chat_id]["archivos_temporales"]:
-        nombre_base = os.path.basename(arch_tmp)
-        nueva_ruta = os.path.join(ruta_originales, nombre_base)
+        nueva_ruta = os.path.join(ruta_originales, os.path.basename(arch_tmp))
         os.rename(arch_tmp, nueva_ruta)
         archivos_orden.append(nueva_ruta)
-        
-    sesiones_activas.pop(chat_id)
-    
-    # Procesar y cotizar
+    sesiones_activas.pop(chat_id, None)
+
+    # Guardar JSON de referencia en la carpeta de la orden
+    with open(os.path.join(ruta_originales, "config_webapp.json"), "w", encoding="utf-8") as f:
+        json.dump(data_interfaz, f, indent=2, ensure_ascii=False)
+
+    # Generar PDF y cotizar cobertura de tinta
     ruta_pdf_final = await unificar_y_procesar_a_pdf(archivos_orden, ruta_procesados, config_impresion)
     reporte_costos = calcular_costo_gx7110(ruta_pdf_final, config_impresion)
 
-    with open(os.path.join(ruta_originales, "instruccion_cliente.txt"), "w", encoding="utf-8") as f:
-        f.write(texto)
-    
-    # Construir el reporte
-    # === CONSTRUIR EL REPORTE ===
+    # Construir desglose detallado para caja
     copias = config_impresion.get("copias", 1)
-    es_doble_cara = "Doble Cara" if config_impresion.get("doble_cara") else "Normal"
-    tamano = config_impresion.get("tamano_papel", "carta")
-    tipo = config_impresion.get("tipo_papel", "normal")
-    rango = config_impresion.get("rango_paginas", "todos")
-    texto_rango = "Doc. Completo" if rango == "todos" else f"Págs: {rango}"
-    
-    res = f"✅ **Orden #{orden_id} Procesada**\n\n"
-    res += f"⚙️ **Config:** {copias} Copias | {es_doble_cara} | {texto_rango}\n"
-    res += f"📄 **Papel:** {tamano.upper()} | {tipo.upper()}\n\n"
-    
-    # NUEVO: Reporte detallado de Cobertura
-    res += f"📊 **Análisis de Cobertura de Tinta:**\n"
-    if reporte_costos['resumen_tipos']['texto_bn'] > 0:
-        res += f"➖ Textos Blanco/Negro: {reporte_costos['resumen_tipos']['texto_bn']} págs\n"
-    if reporte_costos['resumen_tipos']['texto_color'] > 0:
-        res += f"➖ Textos con títulos/color: {reporte_costos['resumen_tipos']['texto_color']} págs\n"
-    if reporte_costos['resumen_tipos']['imagen_full'] > 0:
-        res += f"🖼️ Imágenes Full Color/Fotos: {reporte_costos['resumen_tipos']['imagen_full']} págs\n"
-    
-    res += f"\n- Hojas de papel a consumir: {reporte_costos['hojas_fisicas_a_usar']}\n\n"
-    
-    res += f"💰 **COBRO AL CLIENTE:** ${reporte_costos['precio_venta_sugerido']} MXN\n"
-    res += f"*(Costo int: ${reporte_costos['costo_interno_mxn']} | Ganancia: ${reporte_costos['ganancia_estimada']})*\n\n"
+    es_doble = "Doble Cara" if config_impresion.get("doble_cara") else "1 Cara"
+    tamano = config_impresion.get("tamano_papel", "carta").upper()
+    tipo = config_impresion.get("tipo_papel", "normal").upper()
+    rango = config_impresion.get("rango_paginas", "")
+    texto_rango = "Doc. Completo" if not rango else f"Págs: {rango}"
+    bandeja_pre = config_impresion.get("bandeja_manual") or "Automática"
 
-    # Guardar en memoria para cuando presionen el botón
+    res = f"✅ **Orden #{orden_id} Lista**\n\n"
+    res += f"⚙️ **Config:** {copias} Copias | {'Color' if config_impresion['color'] else 'B/N'} | {es_doble}\n"
+    res += f"📄 **Papel:** {tamano} | {tipo} | {texto_rango}\n"
+    res += f"📥 **Bandeja:** {bandeja_pre}\n\n"
+
+    res += f"📊 **Desglose de Tinta:**\n"
+    if reporte_costos['resumen_tipos']['texto_bn'] > 0:
+        res += f"➖ Textos B/N: {reporte_costos['resumen_tipos']['texto_bn']} págs\n"
+    if reporte_costos['resumen_tipos']['texto_color'] > 0:
+        res += f"➖ Textos con color: {reporte_costos['resumen_tipos']['texto_color']} págs\n"
+    if reporte_costos['resumen_tipos']['imagen_full'] > 0:
+        res += f"🖼️ Full Color / Fotos: {reporte_costos['resumen_tipos']['imagen_full']} págs\n"
+    res += f"📦 Hojas a consumir: {reporte_costos['hojas_fisicas_a_usar']}\n\n"
+
+    # Alerta física de bandeja posterior para tus padres
+    es_foto = config_impresion.get("tipo_papel") == "fotografico"
+    es_oficio = config_impresion.get("tamano_papel") == "oficio"
+    if es_foto or es_oficio:
+        razon = []
+        if es_oficio:
+            razon.append("OFICIO")
+        if es_foto:
+            razon.append("FOTOGRÁFICO")
+        res += f"⚠️ **PONER PAPEL {' Y '.join(razon)} EN BANDEJA POSTERIOR**\n\n"
+
+    res += f"💰 **COBRAR AL CLIENTE: ${reporte_costos['precio_venta_sugerido']} MXN**\n"
+    res += f"*(Costo: ${reporte_costos['costo_interno_mxn']} | Ganancia: ${reporte_costos['ganancia_estimada']})*"
+
     context.user_data['ultima_orden'] = {
         'orden_id': orden_id,
         'pdf_path': ruta_pdf_final,
         'config': config_impresion,
         'costos': reporte_costos
     }
-    
-    await mensaje_estado.delete() 
-    
-    # LÓGICA DE BANDEJAS CLARA PARA EL USUARIO
-    es_foto = config_impresion.get("tipo_papel") == "fotografico"
-    es_oficio = config_impresion.get("tamano_papel") == "oficio"
-    
-    mensaje_accion = ""
-    if es_foto or es_oficio:
-        # Detectar qué tipo de papel especial es para el mensaje
-        razon = []
-        if es_oficio: razon.append("OFICIO")
-        if es_foto: razon.append("FOTOGRÁFICO")
-        
-        mensaje_accion += f"⚠️ **ATENCIÓN:** Se requiere papel {' y '.join(razon)}.\n"
-        mensaje_accion += "👉 Colócalo en la **BANDEJA POSTERIOR** (Rear Tray).\n\n"
-    else:
-        # Es bond tamaño carta. Dar tranquilidad de que es automático.
-        mensaje_accion += "✅ **Papel Carta Normal.**\n"
-        mensaje_accion += "👉 Se tomará automáticamente del **CASSETTE 1**.\n\n"
-        
-    mensaje_accion += "¿Todo correcto para imprimir?"
-    
-    # 2. Botones de confirmación y cancelación (AQUÍ ESTÁ LA VARIABLE FALTANTE)
-    keyboard = [
-        [InlineKeyboardButton("✅ Automático (Confirmar)", callback_data="print_auto")],
+
+    await mensaje_estado.delete()
+
+    texto_btn_confirmar = (
+        f"🖨️ IMPRIMIR ({config_impresion['bandeja_manual']})"
+        if config_impresion.get('bandeja_manual')
+        else "🖨️ ENVIAR A IMPRESORA (Automático)"
+    )
+
+    teclado = [
+        [InlineKeyboardButton(texto_btn_confirmar, callback_data="print_auto")],
         [
-            InlineKeyboardButton("📥 Cassette 1", callback_data="print_cas1"),
-            InlineKeyboardButton("📥 Cassette 2", callback_data="print_cas2")
+            InlineKeyboardButton("📥 Cas. 1", callback_data="print_cas1"),
+            InlineKeyboardButton("📥 Cas. 2", callback_data="print_cas2"),
+            InlineKeyboardButton("📄 Posterior", callback_data="print_rear")
         ],
-        [InlineKeyboardButton("📄 Bandeja Posterior", callback_data="print_rear")],
         [InlineKeyboardButton("❌ Cancelar", callback_data="cancel_order")]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    # === ENVIAR RESUMEN DE COSTOS ===
-    await update.message.reply_text(res, parse_mode='Markdown')
-    
-    # === ENVIAR VISTA PREVIA DEL PDF ===
+
     with open(ruta_pdf_final, 'rb') as pdf_file:
         await update.message.reply_document(
             document=pdf_file,
             filename=f"VistaPrevia_{orden_id}.pdf",
-            caption="👀 **VISTA PREVIA DEL DOCUMENTO FINAL**\n(Abre el archivo para revisarlo con el cliente antes de imprimir)",
+            caption=res,
             parse_mode='Markdown',
-            read_timeout=60, # Increased timeout to 60 seconds
+            reply_markup=InlineKeyboardMarkup(teclado),
+            read_timeout=60,
             write_timeout=60,
             connect_timeout=60
         )
-        
-    # === ENVIAR BOTONES DE ACCIÓN ===
-    await update.message.reply_text(mensaje_accion, parse_mode='Markdown', reply_markup=reply_markup)
+
+
+async def comandos_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Atajos por texto para reportes o guía rápida."""
+    if not usuario_permitido(update.effective_user.id):
+        return
+
+    texto = update.message.text.lower()
+    if "reporte" in texto or "corte" in texto:
+        await generar_y_enviar_reporte(update, texto)
+        return
+
+    chat_id = update.message.chat_id
+    if chat_id in sesiones_activas and sesiones_activas[chat_id].get("archivos_temporales"):
+        teclado = [[InlineKeyboardButton("🎛️ ABRIR PANEL DE IMPRESIÓN", web_app=WebAppInfo(url=WEBAPP_URL))]]
+        await update.message.reply_text(
+            "👆 Ya tienes archivos cargados. Toca el botón para configurar e imprimir:",
+            reply_markup=InlineKeyboardMarkup(teclado)
+        )
+    else:
+        await update.message.reply_text("⚠️ Envía primero las fotos o documentos del cliente.")
+
 
 async def boton_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer() 
+    if not usuario_permitido(query.from_user.id):
+        await query.answer("⛔ No tienes autorización para usar este servicio.", show_alert=True)
+        return
 
-    user_id = update.effective_user.id
-    if USUARIOS_AUTORIZADOS and user_id not in USUARIOS_AUTORIZADOS:
-        await update.message.reply_text("⛔ No tienes autorización para usar este servicio de impresión.")
-        return
-    
-    # === 1. MANEJO DE CANCELACIÓN ===
+    await query.answer()
+
     if query.data == "cancel_order":
-        await query.edit_message_text(text="❌ Orden cancelada. Manda nuevas instrucciones si lo deseas.")
         context.user_data.pop('ultima_orden', None)
+        await query.edit_message_caption(caption="❌ Orden cancelada en caja. No se registró cobro.")
         return
-    
-    # === 2. MANEJO DE IMPRESIÓN ===
+
     if query.data.startswith("print_"):
         orden = context.user_data.get('ultima_orden')
         if not orden:
-            await query.edit_message_text(text="❌ Orden caducada.")
+            await query.edit_message_caption(caption="❌ Orden caducada o ya enviada a imprimir.")
             return
-            
-        # Determinar qué bandeja física se eligió
-        bandeja_elegida = None
+
+        # Si presiona un botón de bandeja específica en Telegram, sobreescribe;
+        # si presiona "print_auto", respeta la bandeja elegida en la WebApp (o None si fue auto)
         if query.data == "print_cas1":
-            bandeja_elegida = "Cassette 1"
+            orden['config']['bandeja_manual'] = "Cassette 1"
         elif query.data == "print_cas2":
-            bandeja_elegida = "Cassette 2"
+            orden['config']['bandeja_manual'] = "Cassette 2"
         elif query.data == "print_rear":
-            bandeja_elegida = "Rear Tray"
-        # Si presiona "print_auto", bandeja_elegida se queda en None (FastAPI usará su lógica)
-        
-        # Inyectar la instrucción en el JSON de configuración
-        orden['config']['bandeja_manual'] = bandeja_elegida
-        
-        # Cambiar el mensaje para confirmar visualmente
-        modo_texto = f"Bandeja Forzada: {bandeja_elegida}" if bandeja_elegida else "Modo Automático"
-        await query.edit_message_text(text=f"✅ Confirmado ({modo_texto}). 🚀 Transmitiendo por VPN...")
-        
-        # 💥 LA LLAMADA REAL A LA TIENDA
+            orden['config']['bandeja_manual'] = "Rear Tray"
+
+        bandeja_final = orden['config'].get('bandeja_manual') or "Automática"
+        await query.edit_message_caption(
+            caption=f"✅ Confirmado (Bandeja: {bandeja_final}). 🚀 Transmitiendo a la tienda..."
+        )
+
+        # Transmisión real a FastAPI en la tienda
         exito, mensaje = await enviar_a_fastapi(orden['pdf_path'], orden['config'])
-        
+
         if exito:
-            # ✅ REGISTRO ÚNICAMENTE CUANDO SE CONFIRMÓ E IMPRIMIÓ:
             guardar_registro_csv(orden['orden_id'], orden['config'], orden['costos'])
-            context.user_data.pop('ultima_orden', None) # Limpiar memoria de la orden
-            await query.message.reply_text("🖨️ ¡Archivo recibido en la tienda! Imprimiendo...")
+            context.user_data.pop('ultima_orden', None)
+            await query.message.reply_text(
+                f"🖨️ **¡Orden #{orden['orden_id']} recibida en la tienda!** Imprimiendo...",
+                parse_mode='Markdown'
+            )
         else:
-            await query.message.reply_text(f"⚠️ Falló la transmisión a la tienda:\n{mensaje}")
+            await query.message.reply_text(
+                f"⚠️ **Falló la transmisión a la tienda:**\n{mensaje}\n\n"
+                f"*(La orden NO se sumó al corte de caja)*",
+                parse_mode='Markdown'
+            )
+
 
 async def manejador_errores(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Atrapa los errores de red de Telegram para que no ensucien la consola."""
+    """Atrapa errores de red de Telegram sin detener el servicio."""
     print(f"⚠️ Hipo de conexión con Telegram ignorado: {context.error}")
 
 
 # ================= INICIO DE LA APLICACIÓN =================
 if __name__ == '__main__':
-    # (Asegúrate de que load_dotenv() y os.getenv("TELEGRAM_BOT") estén hasta arriba del archivo)
-    
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
-    # 1. Configurar la zona horaria local (Ciudad Nezahualcóyotl / CDMX)
+    # 1. Zona horaria local y tareas programadas
     tz_mexico = pytz.timezone('America/Mexico_City')
-    
-    # 2. Programar el Corte de Caja a las 22:05 (10:05 PM) todos los días
     hora_corte = dt_time(hour=22, minute=5, tzinfo=tz_mexico)
     app.job_queue.run_daily(enviar_corte_automatico, time=hora_corte)
-    
-    # 3. Gatillo de Limpieza Inmediata (Se ejecuta 5 segundos después de encender el bot por la mañana)
     app.job_queue.run_once(tarea_mantenimiento_y_limpieza, 5)
-    
-    # Manejador silencioso de errores
+
+    # 2. Manejador de errores
     app.add_error_handler(manejador_errores)
-    # Aquí se registran todos los handlers que escuchan eventos de Telegram
+
+    # 3. Comandos rápidos
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("limpiar", cmd_limpiar))
+    app.add_handler(CommandHandler("estado", cmd_estado))
+    app.add_handler(CommandHandler("reporte_hoy", cmd_reporte_hoy))
+    app.add_handler(CommandHandler("reporte_semana", cmd_reporte_semana))
+    app.add_handler(CommandHandler("reporte_mes", cmd_reporte_mes))
+    app.add_handler(CommandHandler("reporte_total", cmd_reporte_total))
+
+    # 4. Handlers principales
     app.add_handler(MessageHandler(filters.Document.ALL | filters.PHOTO, recibir_archivo))
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), procesar_instruccion))
+    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, manejar_datos_webapp))
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), comandos_texto))
     app.add_handler(CallbackQueryHandler(boton_callback, pattern="^(print_|cancel_)"))
-    
-    
-    print("🤖 Cerebro iniciado. Esperando archivos en Telegram...")
+
+    print("🤖 Cerebro V2 (Determinista + WebApp + Mantenimiento) iniciado...")
     app.run_polling()
